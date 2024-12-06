@@ -33,16 +33,58 @@ possibility of such damages
     Tier-1 only the Tier 1 computer group will be managed
     All-Tiers   the computer group for Tier 0 and Tier1 will be managed
 .NOTES
-    Version 0.2.20241204
-    The script creates a debug log in the user data app folder. This log file contains additional debug informations
+    Version 0.2.20241206
+    Initial Version
 
     Important events are writte to the application log
-    EventID: 1
+    EventID: 2000
         Severity: Information
         Message: The script is started
-    EventID: 2000
+    EventID: 2001 
         Severity: Error
-        Message: the configuration is not available the script will terminate
+        Message: A error occured while reading config file
+    EventID: 2002 
+    Severity: Error
+        Message: A Kerberos Authentication Policy is missing
+    EventID: 2100
+        Severity: Warning
+        Message: A OU missing in the current domain
+    EventID: 2101
+        Severity: Warning
+        Message: The built-in administrator account is loacted in the tier 0 users OU
+    EventID: 2102
+        Severity: Information  
+        Message: A kerberos  authentication policy is added to a user 
+    EventID: 2103
+        Serverity: Information
+        Message: The "This user is sensitive and cannot be delegated  is set to a user
+    EventID: 2104 
+        Serverity: Information 
+        Message: A users is added users to the protected users group
+    EventID: 2105
+        Serverity: Error
+        Message: A error occurs while removing a user from a privileged groups
+    EventID: 2106 
+        Serverity: Error 
+        Message: A identitiy could not be found
+    EventID: 2107 
+        Serverity: Error
+        Message: A general error occurs while applying the kerberos authentication policy to a user
+    EventID: 2200
+        Serverity: Error 
+        Message: Invalid group sid 
+    EventID: 2201 
+        Serverity: Warning 
+        Message: Remove a user from a privileged group
+    EventID: 2202
+        Serverity: Error
+        Message: The AD Web service not avialble on a domain
+    EventID:2203
+        Serverity: Error
+        Message: A access denied occurs while removing user from a privileged group
+    EventID: 2204
+        Serverity:Error
+        Message: A general error occured while removing a user from a privileged group
 #>
 param(
     [Parameter (Mandatory = $false)]
@@ -139,7 +181,7 @@ function Set-TierLevelIsolation{
         #Validate the Kerboers Authentication policy exists. If not terminate the script with error code 0xA3. 
         $KerberosAuthenticationPolicy = Get-ADAuthenticationPolicy -Filter "Name -eq '$($KerbAuthPolName)'"
         if ($null -eq $KerberosAuthenticationPolicy){
-            Write-Log -Message "Tier 0 Kerberos Authentication Policy '$KerberosPolicyName' not found on AD. Script terminates with error 0xA3" -Severity Error -EventID 999
+            Write-Log -Message "Tier 0 Kerberos Authentication Policy '$KerberosPolicyName' not found on AD. Script terminates with error 0xA3" -Severity Error -EventID 2002
             return $false
         }
         $oProtectedUsersGroup = Get-ADGroup -Identity "$((Get-ADDomain -Server $Domain).DomainSID)-525" -Server $DomainDNS -Properties member
@@ -147,27 +189,27 @@ function Set-TierLevelIsolation{
             if ($OU -notlike "*,DC=*"){ $OU = "$OU,$((GET-ADDomain -Server $Domain).DistinguishedName)"}
             if ($OU -like "*$DomainDN"){
                 if ($null -eq (Get-ADOrganizationalUnit -Filter "DistinguishedName -eq '$OU'" -Server $DomainDNS)){
-                    Write-Log -Message "The OU $OU doesn't exists in $DomainDNS" -Severity Warning -EventID 999
+                    Write-Log -Message "The OU $OU doesn't exists in $DomainDNS" -Severity Warning -EventID 2100
                 } else {
                     foreach ($user in (Get-ADUser -SearchBase $OU -Filter * -Properties msDS-AssignedAuthNPolicy,memberOf,UserAccountControl -SearchScope Subtree -Server $DomainDNS)){
                         if ($user.SID -like "*-500"){
-                            Write-Log -Message "Built in Administrator (-500) is located in $OU" -Severity Warning -EventID 999
+                            Write-Log -Message "Built in Administrator (-500) is located in $OU" -Severity Warning -EventID 2101
                             #ignore the built-in administrator
                         } else {
                             #Kerberos Authentication Policy validation
                             if ($user.'msDS-AssignedAuthNPolicy' -ne $KerbAuthPolName){
-                                Write-Log "Adding Kerberos Authentication Policy $KerbAuthPolName on $User" -Severity Information -EventID 999
+                                Write-Log "Adding Kerberos Authentication Policy $KerbAuthPolName on $User" -Severity Information -EventID 2102
                                 Set-ADUser $user -AuthenticationPolicy $KerbAuthPolName -Server $DomainDNS
                             }
                             #User account control validation
                             if (($user.UserAccountControl -BAND 1048576) -ne 1048576){
                                 Set-ADAccountControl -Identity $user -AccountNotDelegated $True -Server $DomainDNS
-                                Write-Log -Message "Mark $($User.DistinguishedName) as sensitive and cannot be delegated" -Severity Information -EventID 999
+                                Write-Log -Message "Mark $($User.DistinguishedName) as sensitive and cannot be delegated" -Severity Information -EventID 2103
                             }
                             #Protected user group validation
                             if ($AddProtectedUsersGroup -and ($oProtectedUsersGroup.member -notcontains $user.Distiguishedname)){
                                 Add-ADGroupMember -Identity $oProtectedUsersGroup $user -Server $DomainDNS
-                                Write-Log "User $($user.Distiguishedname) is addeded to protected users in $Domain" -Severity Information -EventID 999
+                                Write-Log "User $($user.Distiguishedname) is addeded to protected users in $Domain" -Severity Information -EventID 2104
                             }
                         }
                     }
@@ -176,15 +218,13 @@ function Set-TierLevelIsolation{
         }
     }
     catch [Microsoft.ActiveDirectory.Management.ADException]{
-        #Write-Log -Message "Cannot add Sensitive flag to the $($user.DistinguishedName)" -Severity Error -EventID 999
-        #Write-Log "A access denied error has occured on User $($user.DistinguishedName) while adding user to the protected users group)" -Severity Error -EventID 999
-        Write-Log "a access denied error occurs while changing $user attribute" -Severity Error -EventID 999
+        Write-Log "a access denied error occurs while changing $user attribute" -Severity Error -EventID 2105
     }
     catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException]{
-        Write-Log "Cannot enumerrate users" -Severity Error -EventID 999
+        Write-Log "Cannot enumerrate users" -Severity Error -EventID 2106
     }
     catch{
-        Write-Log "A unexpected error occured $($error[0])" -Severity Error -EventID 999
+        Write-Log "A unexpected error occured $($error[0])" -Severity Error -EventID 2107
     }   
 }
 
@@ -214,7 +254,7 @@ function validateAndRemoveUser{
     $Group = Get-ADGroup -Identity $SID -Properties members,canonicalName -Server $DomainDNSName 
     #validate the SID exists
     if ($null -eq $Group){
-        Write-Log "Can't validate $SID. This SID is not available" -Severity Warning
+        Write-Log "Can't validate $SID. This SID is not available" -Severity Warning -EventID 
         return
     }
     #walk through all members of the group and check this member is a valid user or group
@@ -236,17 +276,17 @@ function validateAndRemoveUser{
                     ($excludeUser              -notlike "*$($member.DistinguishedName)*" )           #ignore if the member is in the exclude user list
                     ){    
                         try{
-                            Write-Log -Message "remove $member from $($Group.DistinguishedName)" -Severity Information -EventID 999
+                            Write-Log -Message "remove $member from $($Group.DistinguishedName)" -Severity Warning -EventID 2201
                             Set-ADObject -Identity $Group -Remove @{member="$($member.DistinguishedName)"} -Server $DomainDNSName
                         }
                         catch [Microsoft.ActiveDirectory.Management.ADServerDownException]{
-                            Write-Log -Message "can't connect to AD-WebServices. $($member.DistinguishedName) is not remove from $($Group.DistinguishedName)" -Severity Error -EventID 999
+                            Write-Log -Message "can't connect to AD-WebServices. $($member.DistinguishedName) is not remove from $($Group.DistinguishedName)" -Severity Error -EventID 2202
                         }
                         catch [Microsoft.ActiveDirectory.Management.ADException]{
-                            Write-Log -Message "Cannot remove $($member.DistinguishedName) from $($Error[0].CategoryInfo.TargetName) $($Error[0].Exception.Message)" -Severity Error -EventID 999
+                            Write-Log -Message "Cannot remove $($member.DistinguishedName) from $($Error[0].CategoryInfo.TargetName) $($Error[0].Exception.Message)" -Severity Error -EventID 2203
                         }
                         catch{
-                            Write-Log -Message $Error[0].GetType().Name -Severity Error -EventID 999
+                            Write-Log -Message $Error[0].GetType().Name -Severity Error -EventID 2204
                         }
                     }
             }
@@ -306,7 +346,7 @@ try{
                 Write-Log -Message "Read config from $ConfigFile" -Severity Debug -EventID 0
                 $config = Get-Content $DefaultConfigFile | ConvertFrom-Json            
             } else {
-                Write-Log -Message "Can't find the configuration in $DefaultConfigFile or Active Directory" -Severity Error -EventID 1000
+                Write-Log -Message "Can't find the configuration in $DefaultConfigFile or Active Directory" -Severity Error -EventID 2000
                 return 0xe7
             }
         }
@@ -317,7 +357,7 @@ try{
     }
 }
 catch {
-    Write-Log -Message "error reading configuration" -Severity Error -EventID 1001
+    Write-Log -Message "error reading configuration" -Severity Error -EventID 2001
     return 0x3E8
 }
 #if the paramter $scope is set, it will overwrite the saved configuration

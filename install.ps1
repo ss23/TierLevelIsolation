@@ -23,16 +23,10 @@ possibility of such damages
 .OUTPUTS 
     None
 .NOTES
-    Version 0.1.20241204
+    Version 0.2.20241206
         Initial Version
 #>
-[CmdletBinding (SupportsShouldProcess)]
-param (
-    #Tier Level 
-    [Parameter(Mandatory = $false)]
-    [ValidateSet("Tier-0", "Tier-1", "All-Tiers")]
-    $scope = "All-Tiers"
-)
+
 <# Function create the entire OU path of the relative distinuished name without the domain component. This function
 is required to provide the same OU structure in the entrie forest
 .SYNOPSIS 
@@ -312,6 +306,21 @@ if (((Get-ADForest).Domains.count -eq 1) -or ($SingleDomain)){
 
 
 #Define Tier  Paramters
+Write-Host "Scope-Level:"
+Write-Host "[0] Tier-0"
+Write-Host "[1] Tier-1"
+Write-Host "[2] Tier 0 and Tier 1"
+do{
+    $strReadHost = Read-Host "Select which scope should be enabled (2)" 
+    switch ($strReadHost) {
+        ""  { $scope = "All-Tiers"}
+        "0" { $scope = "Tier-0" }
+        "1" { $scope = "Tier-1" }
+        "2" { $scope = "All-Tiers"}
+        Default {$scope = ""}
+    }
+}while ($scope -eq '')
+
 if (($scope -eq "Tier-0") -or ( $scope -eq "All-Tiers") ){
     Write-Host "Tier 0 isolation paramter "
     do {
@@ -327,7 +336,7 @@ if (($scope -eq "Tier-0") -or ( $scope -eq "All-Tiers") ){
         if ($strReadHost -eq '') {$strReadHost = $DefaultT0Computers}
         if ($config.Tier0ComputerPath -notcontains $strReadHost){
             $config.Tier0ComputerPath += $strReadHost
-            $strReadHost = Read-Host "Do you want to add anther Tier 0 computer OU (y/[n])"
+            $strReadHost = Read-Host "Do you want to add another Tier 0 computer OU (y/[n])"
         } 
     }while ($strReadHost -like "y*")
     $strReadHost = Read-Host "Provide the Tier 0 Kerberos Authentication policy name ($DefaultT0KerbAuthPolName)"
@@ -478,13 +487,14 @@ if (($scope -eq "Tier-1") -or ($scope -eq "All-Tiers")){
 if ($config.Domains.Count -gt 1){
     $strReadHost = Read-Host "Group Managed Service AccountName ($DefaultGMSAName)"
     if ($strReadHost -eq '') {$strReadHost = $DefaultGMSAName}
-    if ($null -eq (Get-ADServiceAccount -Filter "name -eq '$strReadHost'")){
+    $GMSAName = $strReadHost
+    if ($null -eq (Get-ADServiceAccount -Filter "name -eq '$GMSAName'")){
         if (![bool](Get-KdsRootKey)){
             Write-Host "KDS Rootkey is missing." -ForegroundColor Red
             Write-Host "Creating KDS-Rootkey" -ForegroundColor Yellow
             Add-KdsRootKey -EffectiveTime ((Get-Date).AddHours(-10))
         }
-        New-GMSA -GMSAName $strReadHost -AllowTOLogon (Get-ADGroup -Identity "$((Get-ADDomain).DomainSID)-516") -Description $DescriptionGMSA
+        New-GMSA -GMSAName $GMSAName -AllowTOLogon (Get-ADGroup -Identity "$((Get-ADDomain).DomainSID)-516") -Description $DescriptionGMSA
     }
 }
 try{
@@ -504,14 +514,12 @@ catch {
 }
 #region group policy
 #read the schedule task template from the current directory
-[string]$ScheduleTaskRaw = Get-Content ".\ScheduledTasksTemplate.xml" -ErrorAction SilentlyContinue
-if ($null -eq $ScheduleTaskRaw ){
-    Write-Host "Missing .\ScheduleTaskTemplate.xml file. Configuration of the schedule tasks terminated" -ForegroundColor Red
-    return
-}
-
-
 try {
+
+    $ScheduleTaskRaw = Get-Content ".\ScheduledTasksTemplate.xml"
+    $ScheduleTaskRaw.Replace("#ScriptPath", $ScriptTarget) | Out-Null
+    $ScheduleTaskRaw.Replace("#GmsaName", $GMSAName) | Out-Null
+    [XML]$ScheduleTaskXML = $ScheduleTaskRaw
     #Enable Claim Support on Domain Controllers. 
     #Write this setting to the default domain controller policy  
     foreach ($domain in $config.Domains){
@@ -530,27 +538,30 @@ try {
     if (!(Test-Path "$GPPath")){
         New-Item -ItemType Directory $GPPath | Out-Null
     }
-    $GPPRAW = Get-Content ".\$TaskSchedulerXML"
-    $GPPRAW.Replace($ComputerManagementScript, "$ScriptTarget\$ComputerManagementScript")
-    $GPPRAW.Replace($UserComputerManagementScript, "$ScriptTarget\$UserManagementScript")
-    $GPPRAW | Out-File "$GPPath\$TaskSchedulerXML"
-    $oGPO | New-GPLink -Target (Get-ADDomain).DomainControllersContainer -LinkEnabled $true
-    Write-Host "Tier Level User Management Group Policy is linked to Domain Controllers OU but not activated" -ForegroundColor Yellow -BackgroundColor Blue
-    Write-Host "Validate the group policy and enable" -ForegroundColor Yellow
-    if ($config.Domains.Count -gt 1){
-        $UdpateGMSACommand = "`$principal = New-ScheduledTaskPrincipal -LogonType Password -UserId '$GmsaName`$';Set-ScheduledTask 'Tier 0 User Management' -Principal `$principal"
-        $ScheduleTaskRaw = $ScheduleTaskRaw.Replace('$InstallTask', $UdpateGMSACommand)        
-    } else {
-        [XML]$ScheduleTaskXML = Get-Content "$GPPath\$TaksSchedulterXML"
-        $GMSAChangeNodeTier0 = $ScheduleTaskXML.SelectSingleNode("//TaskV2[@name='Change Tier 0 User Management']")
-        $GMSAChangeNodeTier1 = $ScheduleTaskXML.SelectSingleNode("//TaskV2[@name='Change Tier 0 User Management']")
-        $ScheduleTaskXML.ScheduledTasks.RemoveChild($GMSAChangeNodeTier0)
-        $ScheduleTaskXML.ScheduledTasks.RemoveChild($GMSAChangeNodeTier1)
-        $ScheduleTaskXML.Save("$GPPath\$TaksSchedulterXML")    
-
+    if ($scope -ne "Tier-1"){
+        "Remove Tier 0 tasks"
+        $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{B1168190-7E2C-4177-9391-B1FFBCDF4774}'}
+        $task.ParentNode.RemoveChild($Task) | Out-Null
+        $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{A26FE3E3-9BD7-4172-92DF-748622701717}'}
+        $task.ParentNode.RemoveChild($Task) | Out-Null
     }
+    if ($scope -ne "Tier-0"){
+        "Remove Tier 1 tasks"
+        $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{D9E485BC-145A-47BC-B6C0-A3457662E26A}'}
+        $task.ParentNode.RemoveChild($Task) | Out-Null
+        $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{1CD57939-879D-44F9-A38F-7C140A58F041}'}
+        $task.ParentNode.RemoveChild($Task) | Out-Null
+    }
+    if ($config.Domains.Count -eq 1){
+        $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{BCB5982B-9E75-4A3B-8E10-C83565DFFCE4}'}
+        $task.ParentNode.RemoveChild($Task) | Out-Null
+    }
+    $ScheduleTaskXML.Save("$GPPath\$TaskSchedulerXML")
+    $oGPO | New-GPLink -Target (Get-ADDomain).DomainControllersContainer -LinkEnabled Yes
+    Write-Host "Tier Level User Management Group Policy is linked to Domain Controllers OU" -ForegroundColor Yellow -BackgroundColor Blue
+    Write-Host "DO not forget to enabled Tier 0 user management task" -ForegroundColor Yellow
 } 
 catch{
-
+    Write-Host $error[0]
 }
 #endregion 
