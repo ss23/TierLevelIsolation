@@ -33,6 +33,10 @@ possibility of such damages
     Tier-1 only the Tier 1 computer group will be managed
     All-Tiers   the computer group for Tier 0 and Tier1 will be managed
 .NOTES
+    Version 20241204 
+        Initial Version 
+
+        
     The script creates a debug log in the user data app folder. This log file contains additional debug informations
 
     Important events are writte to the application log
@@ -223,7 +227,7 @@ $ADconfigurationPath = "CN=Tier Level Isolation,CN=Services,$((Get-ADRootDSE).co
 #endregion
 
 #script Version 
-$ScriptVersion = "1.0.20241204"
+$ScriptVersion = "0.2.20241206"
 #region Manage log file
 [int]$MaxLogFileSize = 1048576 #Maximum size of the log file
 $LogFile = "$($env:LOCALAPPDATA)\$($MyInvocation.MyCommand).log" #Name and path of the log file

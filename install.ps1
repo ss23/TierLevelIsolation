@@ -22,7 +22,9 @@ possibility of such damages
     This script installes the Kerberos Tier Level isolation
 .OUTPUTS 
     None
-
+.NOTES
+    Version 0.1.20241204
+        Initial Version
 #>
 [CmdletBinding (SupportsShouldProcess)]
 param (
@@ -223,13 +225,15 @@ $ScriptTarget              = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scrip
 #Default FQDN configuration file path
 $ConfigFile                = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts\Tiering.config"
 
+$EnablePrivilegeGroupCleanUP = $true
+
 #constantes
 $TaskSchedulerXML          = "ScheduledTasks.xml"
 $ComputerManagementScript  = "TierLevelComputer.ps1"
 $UserManagementScript      = "TierlevelUser.ps1"
 $GPOName = "Tier Level Isolation"
 
-$RegExOUPattern = "((OU|CN)=[^,]+,)*(OU|CN)=[^,]+$"
+#$RegExOUPattern = "((OU|CN)=[^,]+,)*(OU|CN)=[^,]+$"
 $RegExDNDomain = "(DC=[^,]+,)*DC=.+$"
 
 $DefaultDomainControllerPolicy = "6AC1786C-016F-11D2-945F-00C04FB984F9"
@@ -259,7 +263,9 @@ $config | Add-Member -MemberType NoteProperty -Name tier1UsersPath      -Value @
 $config | Add-Member -MemberType NoteProperty -Name T0KerbAuthPolName   -Value $DefaultT0KerbAuthPolName
 $config | Add-Member -MemberType NoteProperty -Name T1KerbAuthPolName   -Value $DefaultT1KerbAuthPolName
 $config | Add-Member -MemberType NoteProperty -Name Domains             -Value @()
-$config | Add-Member -MemberType NoteProperty -Name scope               -Value $scope   
+$config | Add-Member -MemberType NoteProperty -Name scope               -Value $scope
+$config | Add-Member -MemberType NoteProperty -Name ProtectedUsers      -Value @()
+$config | Add-Member -MemberType NoteProperty -Name PrivilegedGroupsCleanUp -Value $EnablePrivilegeGroupCleanUP
 
 
 #########################################################################################################
@@ -305,7 +311,7 @@ if (((Get-ADForest).Domains.count -eq 1) -or ($SingleDomain)){
 }
 
 
-#Define Tier 0 Paramters
+#Define Tier  Paramters
 if (($scope -eq "Tier-0") -or ( $scope -eq "All-Tiers") ){
     Write-Host "Tier 0 isolation paramter "
     do {
@@ -354,6 +360,24 @@ if (($scope -eq "Tier-1") -or ( $scope -eq "All-Tiers")){
     if ($strReadHost -eq '') {$strReadHost = $DefaultT1KerbAuthPolName}
     $config.T1KerbAuthPolName = $strReadHost
 }
+Write-Host "Do you want to manage protected users group with tiering?"
+Write-Host "[0] Tier-0 users will be added to protected users"
+Write-Host "[1] Tier-1 users will be added tp protected users"
+Write-Host "[2] Tier-0 and Tier-1 users will be added to protected users"
+Write-Host "[3] Protected users will not be managed with Tiering"
+$strReadHost = Read-Host "Select protected users level [3]"
+switch ($strReadHost) {
+    "0" { $config.ProtectedUsers = @("Tier-0") }
+    "1" { $config.ProtectedUsers = @("Tier-1") }
+    "2" { $config.ProtectedUsers = @("Tier-0","Tier-1")}
+    Default { $config.ProtectedUsers = @()}
+}
+$strReadHost = "Enable privileged group cleanup [Y/N] (y)"
+if ($strReadHost -like "n*"){
+    $config.PrivilegedGroupsCleanUp = $false
+} else {
+    $config.PrivilegedGroupsCleanUp = $true
+} 
 #endregion
 
 #region OU validation / creation
@@ -463,9 +487,21 @@ if ($config.Domains.Count -gt 1){
         New-GMSA -GMSAName $strReadHost -AllowTOLogon (Get-ADGroup -Identity "$((Get-ADDomain).DomainSID)-516") -Description $DescriptionGMSA
     }
 }
-Copy-Item .\TierLevelComputerManagement.ps1 $ScriptTarget -ErrorAction Stop
-Copy-Item .\TierLevelUserManagement.ps1 $ScriptTarget -ErrorAction Stop
-$config | ConvertTo-Json | Out-File $ConfigFile 
+try{
+    Copy-Item .\TierLevelComputerManagement.ps1 $ScriptTarget -ErrorAction Stop
+    Copy-Item .\TierLevelUserManagement.ps1 $ScriptTarget -ErrorAction Stop    
+} 
+catch{
+    Write-Host "can not copy the script file to $ScriptTarget" -ForegroundColor Red
+}
+try {
+    Write-Host "config file schreiben oder in AD schreiben" -ForegroundColor Yellow
+    $config | ConvertTo-Json | Out-File $ConfigFile 
+}
+catch {
+    Write-Host "Can not write the config file"
+    return
+}
 #region group policy
 #read the schedule task template from the current directory
 [string]$ScheduleTaskRaw = Get-Content ".\ScheduledTasksTemplate.xml" -ErrorAction SilentlyContinue
