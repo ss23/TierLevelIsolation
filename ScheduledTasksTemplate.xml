@@ -4,7 +4,7 @@
 		<Properties action="U" name="Tier 0 Computer Management" runAs="NT AUTHORITY\System" logonType="S4U">
 			<Task version="1.2">
 				<RegistrationInfo>
-					<Author>Adminsitrator</Author>
+					<Author>Administrator</Author>
 					<Description>Manage Tier 0 computer claim</Description>
 				</RegistrationInfo>
 				<Principals>
@@ -34,7 +34,7 @@
 				<Actions Context="Author">
 					<Exec>
 						<Command>powershell.exe</Command>
-						<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelComputerManagement.ps1" -Scope Tier-0</Arguments>
+						<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelComputerManagement.ps1" -Scope 'Tier-0'</Arguments>
 					</Exec>
 				</Actions>
 				<Triggers>
@@ -88,7 +88,7 @@
 				<Actions Context="Author">
 					<Exec>
 						<Command>powershell.exe</Command>
-						<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelComputerManagement.ps1" -Scope Tier-1</Arguments>
+						<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelComputerManagement.ps1" -Scope 'Tier-1'</Arguments>
 					</Exec>
 				</Actions>
 				<Triggers>
@@ -134,7 +134,7 @@
 				<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
 				<AllowHardTerminate>false</AllowHardTerminate>
 				<AllowStartOnDemand>true</AllowStartOnDemand>
-				<Enabled>true</Enabled>
+				<Enabled>false</Enabled>
 				<Hidden>false</Hidden>
 				<ExecutionTimeLimit>PT1H</ExecutionTimeLimit>
 				<Priority>7</Priority>
@@ -142,7 +142,7 @@
 			<Triggers>
 				<CalendarTrigger>
 				<StartBoundary>2024-12-06T12:00:00</StartBoundary>
-				<Enabled>false</Enabled>
+				<Enabled>true</Enabled>
 				<ScheduleByDay>
 					<DaysInterval>1</DaysInterval>
 				</ScheduleByDay>
@@ -157,7 +157,7 @@
 			<Actions Context="Author">
 				<Exec>
 					<Command>powershell.exe</Command>
-					<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelUserManagement.ps1" -Scope Tier-0</Arguments>
+					<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelUserManagement.ps1" -Scope 'Tier-0'</Arguments>
 				</Exec>
 			</Actions>
 		</Task>
@@ -190,7 +190,7 @@
 			<AllowHardTerminate>false</AllowHardTerminate>
 			<RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
 			<AllowStartOnDemand>true</AllowStartOnDemand>
-			<Enabled>true</Enabled>
+			<Enabled>false</Enabled>
 			<Hidden>false</Hidden>
 			<RunOnlyIfIdle>false</RunOnlyIfIdle>
 			<WakeToRun>false</WakeToRun>
@@ -200,7 +200,7 @@
 		<Triggers>
 			<CalendarTrigger>
 				<StartBoundary>2024-12-06T12:05:00</StartBoundary>
-				<Enabled>false</Enabled>
+				<Enabled>true</Enabled>
 				<ScheduleByDay>
 					
 				</ScheduleByDay>
@@ -214,7 +214,7 @@
 		<Actions Context="Author">
 			<Exec>
 				<Command>powershell.exe</Command>
-				<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelUserManagement.ps1" -Scope Tier-1</Arguments>
+				<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelUserManagement.ps1" -Scope 'Tier-1'</Arguments>
 			</Exec>
 		</Actions>
 	</Task>

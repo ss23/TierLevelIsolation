@@ -33,55 +33,14 @@ possibility of such damages
     Tier-1 only the Tier 1 computer group will be managed
     All-Tiers   the computer group for Tier 0 and Tier1 will be managed
 .NOTES
-    Version 20241204 
+    Version 20241219 
         Initial Version 
+    
 
         
     The script creates a debug log in the user data app folder. This log file contains additional debug informations
-
     Important events are writte to the application log
-    EventID: 1
-        Severity: Information
-        Message: The script is started
-    EventID: 1000
-        Severity: Error
-        Message: the configuration is not available the script will terminate
-    EventID: 1001
-        Severity: Error
-        Message: The configuration file has a invalid JSON format
-    EventID: 1002
-        Severity: Error
-        Message: The AD web service on the current domain could not be reached
-    EventID: 1003 
-        Severity: Error
-        Message: a unexpected error has occured while updating the Tier 0 computer group
-    EventID: 1004
-        Severity: Error
-        Message: a unexpectec error has occured while updating the Tier 1 computer group
-    EventID: 1100
-        Severity: Error
-        Message: The Tier 0 computer group is missing or cannot be reachted
-    EventID: 1101
-        Severity: Warning
-        Message: A Tier 0 computer is missing in a domain
-    EventID: 1002
-        Severity: Information
-        Message: A computer object is added to the Tier 0computer group
-    EventID: 1103
-        Severity: Warning
-        Message: A unexpected computer object is member of the Tier 0 computer group and will be removed
-    EventID: 1200
-        Severity: Error
-        Message: The Tier 1 computer is not available
-    EventID: 1201
-        Severity: Warning
-        Message: A Tier 1 computer of is missing in a domain
-    EventID: 1202
-        Severity: Information
-        Message: A computer object added to the Tier 1 computer group
-    EventID: 1203
-        Severity: Warning
-        Message: A unexpected computer object is member of the Tier 1 computer group and will be removed
+
 #>
 
 param(
@@ -143,22 +102,22 @@ function Write-Log {
     }
 
     #Format the log message and write it to the log file
-    $LogLine = "$(Get-Date -Format o), [$Severity], $Message"
+    $LogLine = "$(Get-Date -Format o), [$Severity],[$EventID], $Message"
     Add-Content -Path $LogFile -Value $LogLine 
     #If the severity is not debug write the even to the event log and format the output
     switch ($Severity) {
         'Error' { 
             Write-Host $Message -ForegroundColor Red
             Add-Content -Path $LogFile -Value $Error[0].ScriptStackTrace 
-            Write-EventLog -LogName "Application" -source $source -EventId $EventID -EntryType Error -Message $Message 
+            Write-EventLog -LogName $eventLog -source $source -EventId $EventID -EntryType Error -Message $Message 
         }
         'Warning' { 
             Write-Host $Message -ForegroundColor Yellow 
-            Write-EventLog -LogName "Application" -source $source -EventId $EventID -EntryType Warning -Message $Message
+            Write-EventLog -LogName $eventLog -source $source -EventId $EventID -EntryType Warning -Message $Message
         }
         'Information' { 
             Write-Host $Message 
-            Write-EventLog -LogName "Application" -source $source -EventId $EventID -EntryType Information -Message $Message
+            Write-EventLog -LogName $eventLog -source $source -EventId $EventID -EntryType Information -Message $Message
         }
     }
 }
@@ -227,7 +186,7 @@ $ADconfigurationPath = "CN=Tier Level Isolation,CN=Services,$((Get-ADRootDSE).co
 #endregion
 
 #script Version 
-$ScriptVersion = "0.2.20241206"
+$ScriptVersion = "0.2.20241219"
 #region Manage log file
 [int]$MaxLogFileSize = 1048576 #Maximum size of the log file
 $LogFile = "$($env:LOCALAPPDATA)\$($MyInvocation.MyCommand).log" #Name and path of the log file
@@ -241,36 +200,36 @@ if (Test-Path $LogFile) {
     }
 }
 #endregion
-
-Write-Log -Message "Tier Isolation computer management $Scope version $ScriptVersion started" -Severity Information -EventID 1
-Write-Log -Message $MyInvocation.Line -Severity Debug -EventID 0 # writing the parameter to the log file
+$GlobalCatalog = (Get-ADDomainController -Discover -Service GlobalCatalog -NextClosestSite ).HostName
+Write-Log -Message "Tier Isolation computer management $Scope version $ScriptVersion started. $($MyInvocation.Line)" -Severity Information -EventID 1000
+Write-Log -Message $MyInvocation.Line -Severity Debug -EventID 1001 # writing the parameter to the log file
 #region read configuration
 try{
     if ($ConfigFile -eq '') {
-        if ($null -eq (Get-ADObject $ADconfigurationPath)){
-            Write-Log -Message "Read config from AD configuration partition" -Severity Debug -EventID 0
+        if ($null -ne (Get-ADObject -Filter "DistinguishedName -eq '$ADconfigurationPath'")){
+            Write-Log -Message "Read config from AD configuration partition" -Severity Debug -EventID 1002
             Write-host "AD config lesen noch implementieren" -ForegroundColor Red -BackgroundColor DarkGray
             return
         } else {
             #last resort if the configfile paramter is not available and no configuration is stored in the AD. check for the dafault configuration file
             if ($null -eq $config){
                 if ((Test-Path -Path $DefaultConfigFile)){
-                    Write-Log -Message "Read config from $ConfigFile" -Severity Debug -EventID 0
+                    Write-Log -Message "Read config from $DefaultConfigFile" -Severity Debug -EventID 1100
                     $config = Get-Content $DefaultConfigFile | ConvertFrom-Json            
                 } else {
-                    Write-Log -Message "Can't find the configuration in $DefaultConfigFile or Active Directory" -Severity Error -EventID 1000
+                    Write-Log -Message "Can't find the configuration in $DefaultConfigFile or Active Directory" -Severity Error -EventID 1003
                     return 0xe7
                 }
             }
         }
     }
     else {
-        Write-Log -Message "Read config from $ConfigFile" -Severity Debug -EventID 0
+        Write-Log -Message "Read config from $ConfigFile" -Severity Debug -EventID 1101
         $config = Get-Content $ConfigFile | ConvertFrom-Json 
     }
 }
 catch {
-    Write-Log -Message "error reading configuration" -Severity Error -EventID 1001
+    Write-Log -Message "error reading configuration" -Severity Error -EventID 1003
     return 0x3E8
 }
 #if the paramter $scope is set, it will overwrite the saved configuration
@@ -281,22 +240,25 @@ if ($null -eq $scope ){
 try {
     $Tier0ComputerGroup = Get-ADGroup -Filter "SamAccountName -eq '$($config.Tier0ComputerGroup)'" -Properties member
     if ($null -eq $Tier0ComputerGroup) {
-        Write-Log "Tiering computer management: Can't find the Tier 0 computer group $($config.Tier0ComputerGroup) in the current domain. Script aborted" -Severity Error -EventID 1100
+        Write-Log "Tiering computer management: Can't find the Tier 0 computer group $($config.Tier0ComputerGroup) in the current domain. Script aborted" -Severity Error -EventID 1200
         exit 0x3EA
-    } 
+    } else {
+        Write-Log -Message "The group $($Tier0computerGroup.DistinguishedName) has $($Tier0computerGroup.Member.Count) members" -Severity Debug -EventID 1201
+    }
     if ($config.scope -ne "Tier-0"){
         $Tier1ComputerGroup = Get-ADGroup -Filter "SamAccountName -eq '$($config.Tier1ComputerGroup)'" -Properties member
         if ($null -eq $Tier1ComputerGroup){
-            Write-Log -Message "Tiering computer management: Can't find the Tier 1 computer group $($config.Tier1ComputerGroup) in the current domain" -Severity Error -EventID 1200
+            Write-Log -Message "Tiering computer management: Can't find the Tier 1 computer group $($config.Tier1ComputerGroup) in the current domain" -Severity Error -EventID 1202
         }
     }
 }
 catch [Microsoft.ActiveDirectory.Management.ADServerDownException] {
-    Write-Log "The AD web service is not available" -Severity Error -EventID 1002
+    Write-Log "The AD web service is not available" -Severity Error -EventID 1203
     exit 0x3E9
 }
 
 $GroupUpdateRequired = $false
+
 foreach ($Domain  in $config.Domains) {
     try{
         $DomainDN = (Get-ADDomain -Server $Domain).DistinguishedName  
@@ -306,23 +268,28 @@ foreach ($Domain  in $config.Domains) {
                 if ($OU -notlike "*,DC=*") { $OU = "$OU,$DomainDN" }
                 if ($OU -like "*$DomainDN"){     
                     if ($null -eq (Get-ADObject -Filter "DistinguishedName -eq '$OU'" -Server $Domain)) {
-                    Write-Log "Missing the Tier 0 computer OU $OU" -Severity Warning  -EventID 1101
+                    Write-Log "Missing the Tier 0 computer OU $OU" -Severity Warning  -EventID 1300
                     }
                     else {
                     #validate the computer ain the Tier 0 OU are member of the tier 0 computers group
-                    Write-Log -Message "Found $($Tier0computerGroup.Member.Count) Tier 0 computers in $domain" -Severity Debug -EventID 0
-                    Foreach ($T0Computer in (Get-ADComputer -Filter * -SearchBase $OU -Server $Domain)) {
+                    $T0computers = Get-ADComputer -Filter * -SearchBase $OU -Server $Domain
+                    if ($T0computers.GetType().Name -eq 'ADComputer'){
+                        Write-Log -Message "Found 1 computer in $OU" -Severity Debug -EventID 1301
+                    } else {
+                        Write-Log -Message "Found $($T0computers.count) computers in $OU" -Severity Debug -EventID 1301
+                    }
+                    Foreach ($T0Computer in $T0computers) {
                         if ($Tier0ComputerGroup.member -notcontains $T0Computer.DistinguishedName ) {
                             $Tier0ComputerGroup.member += $T0Computer.DistinguishedName
                             $GroupUpdateRequired = $true
-                            Write-Log "Adding $T0computer to $Tier0ComputerGroup" -Severity Information -EventID 1102
+                            Write-Log "Adding $T0computer to $Tier0ComputerGroup" -Severity Information -EventID 1302
                         }
                     }
                     }
                     #Write update AD group if required
                     if ($GroupUpdateRequired) {
                         Set-ADGroup -Instance $Tier0ComputerGroup
-                        Write-Log "Tier 0 computers $OU updated" -Severity Debug -EventID 0
+                        Write-Log "Tier 0 computers $OU updated" -Severity Debug -EventID 1303
                         $GroupUpdateRequired = $false
                     }
                 }
@@ -340,13 +307,13 @@ foreach ($Domain  in $config.Domains) {
                     if ($OU -notlike "*,DC=*"){ $OU= "$OU,$DomainDN"}
                     if ($OU -like "*,$DomainDN"){
                         if ($null -eq (Get-ADObject -Filter "DistinguishedName -eq '$OU'" -Server $Domain)){
-                            Write-Log "Missing Tier 1 computer OU in $DomainDN" -Severity Warning -EventID 1201
+                            Write-Log "Missing Tier 1 computer OU in $DomainDN" -Severity Warning -EventID 1400
                         } else {
                             Foreach ($Computer in (Get-ADComputer -Filter * -SearchBase $OU -Server $Domain)){
                                 if ($Tier1ComputerGroup.member -notcontains $computer.DistinguishedName){
                                     $Tier1ComputerGroup.member += $Computer.DistinguishedName
                                     $GroupUpdateRequired = $true
-                                    Write-Log -Message "$computer added to $($config.Tier1ComputerGroup)" -Severity Information -EventID 1202
+                                    Write-Log -Message "$computer added to $($config.Tier1ComputerGroup)" -Severity Information -EventID 1401
                                 }
                             }
                         }
@@ -354,24 +321,27 @@ foreach ($Domain  in $config.Domains) {
                 }
             }
             catch{
-                Write-Log "A unexpected error has occured while managing Tier 1 computersgroups $error" -Severity Error -EventID 1004
+                Write-Log "A unexpected error has occured while managing Tier 1 computersgroups $error" -Severity Error -EventID 1402
             }
         }
     }
     catch [Microsoft.ActiveDirectory.Management.ADServerDownException] {
-        Write-Log "The AD WebService is down or not reachable $domain $($error[0].InvocationInfo.ScriptLineNumber)" -Severity Error -EventID 1002
+        Write-Log "The AD WebService is down or not reachable $domain $($error[0].InvocationInfo.ScriptLineNumber)" -Severity Error -EventID 1004
     }
 }
+
 $ComputerObjectToRemove = @()
 $ComputerObjectToRemove = Get-UnexpectedComputerObjects -OUList $config.Tier0ComputerPath -MemberDNList $Tier0ComputerGroup.member -DomainDNSList $config.Domains
 Foreach ($DelComputerDN in $ComputerObjectToRemove){ 
-    Write-Log -Message "Removing computer $DelComputerDN from $($Tier0computerGroup.DistinguishedName)" -Severity Warning -EventID 1103
-    Remove-ADGroupMember -Identity $Tier0ComputerGroup -Members $DelComputerDN -Confirm:$false
+    Write-Log -Message "Removing computer $DelComputerDN from $($Tier0computerGroup.DistinguishedName)" -Severity Warning -EventID 1304
+    $DelComputer = Get-ADComputer -Filter "DistinguishedName -eq '$DelComputerDN'" -Server "$($GlobalCatalog[0]):3268"
+    Remove-ADGroupMember -Identity $Tier0ComputerGroup -Members $DelComputer -Confirm:$false
 }
 if ($scope -ne "Tier-0"){
     $ComputerObjectToRemove = Get-UnexpectedComputerObjects -OUList $config.Tier1ComputerPath -MemberDNList $Tier0ComputerGroup.member -DomainDNSList $config.Domains
     Foreach ($DelComputerDN in $ComputerObjectToRemove){ 
-        Write-Log -Message "Removing computer $DelComputerDN from $($Tier1computerGroup.DistinguishedName)" -Severity Warning -EventID 1203
+        Write-Log -Message "Removing computer $DelComputerDN from $($Tier1computerGroup.DistinguishedName)" -Severity Warning -EventID 1403
+        $DelComputer = Get-ADComputer -Filter "DistinguishedName -eq '$DelComputerDN'" -Server "$($GlobalCatalog[0]):3268"
         Remove-ADGroupMember -Identity $Tier1ComputerGroup -Members $DelComputerDN -Confirm:$false
     }
 }

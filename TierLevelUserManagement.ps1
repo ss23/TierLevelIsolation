@@ -36,55 +36,9 @@ possibility of such damages
     Version 0.2.20241206
     Initial Version
 
-    Important events are writte to the application log
-    EventID: 2000
-        Severity: Information
-        Message: The script is started
-    EventID: 2001 
-        Severity: Error
-        Message: A error occured while reading config file
-    EventID: 2002 
-    Severity: Error
-        Message: A Kerberos Authentication Policy is missing
-    EventID: 2100
-        Severity: Warning
-        Message: A OU missing in the current domain
-    EventID: 2101
-        Severity: Warning
-        Message: The built-in administrator account is loacted in the tier 0 users OU
-    EventID: 2102
-        Severity: Information  
-        Message: A kerberos  authentication policy is added to a user 
-    EventID: 2103
-        Serverity: Information
-        Message: The "This user is sensitive and cannot be delegated  is set to a user
-    EventID: 2104 
-        Serverity: Information 
-        Message: A users is added users to the protected users group
-    EventID: 2105
-        Serverity: Error
-        Message: A error occurs while removing a user from a privileged groups
-    EventID: 2106 
-        Serverity: Error 
-        Message: A identitiy could not be found
-    EventID: 2107 
-        Serverity: Error
-        Message: A general error occurs while applying the kerberos authentication policy to a user
-    EventID: 2200
-        Serverity: Error 
-        Message: Invalid group sid 
-    EventID: 2201 
-        Serverity: Warning 
-        Message: Remove a user from a privileged group
-    EventID: 2202
-        Serverity: Error
-        Message: The AD Web service not avialble on a domain
-    EventID:2203
-        Serverity: Error
-        Message: A access denied occurs while removing user from a privileged group
-    EventID: 2204
-        Serverity:Error
-        Message: A general error occured while removing a user from a privileged group
+    All events written to the log file. Information, Warnings and error events are written to the eventlog
+    All event IDs documented in EventID.md
+
 #>
 param(
     [Parameter (Mandatory = $false)]
@@ -145,26 +99,45 @@ function Write-Log {
     }
 
     #Format the log message and write it to the log file
-    $LogLine = "$(Get-Date -Format o), [$Severity], $Message"
+    $LogLine = "$(Get-Date -Format o), [$Severity],[$EventID], $Message"
     Add-Content -Path $LogFile -Value $LogLine 
     #If the severity is not debug write the even to the event log and format the output
     switch ($Severity) {
         'Error' { 
             Write-Host $Message -ForegroundColor Red
             Add-Content -Path $LogFile -Value $Error[0].ScriptStackTrace 
-            Write-EventLog -LogName "Application" -source $source -EventId $EventID -EntryType Error -Message $Message 
+            Write-EventLog -LogName $eventLog -source $source -EventId $EventID -EntryType Error -Message $Message -Category 0
         }
         'Warning' { 
             Write-Host $Message -ForegroundColor Yellow 
-            Write-EventLog -LogName "Application" -source $source -EventId $EventID -EntryType Warning -Message $Message
+            Write-EventLog -LogName $eventLog -source $source -EventId $EventID -EntryType Warning -Message $Message -Category 0
         }
         'Information' { 
             Write-Host $Message 
-            Write-EventLog -LogName "Application" -source $source -EventId $EventID -EntryType Information -Message $Message
+            Write-EventLog -LogName $eventLog -source $source -EventId $EventID -EntryType Information -Message $Message -Category 0
         }
     }
 }
+<#
+.SYNOPSIS
+    Applied the Kerberos Authentication Policy to the users and add them to the protected users group
+.DESCRIPTION
+    This function applies the Kerberos Authentication policy to all users in the OU parameter and
+    add the user to the protected users groups if the AddProtectedUsersGroup is true
+.FUNCTIONALITY
 
+.PARAMETER DomainDNS
+    The domain DNS Name
+.PARAMETER OrgUnits
+    Is a array of OU distinguishednames of the Tier level users
+.PARAMETER AddProtectedUsersGroup
+    Is this parameter is true the user will be added to the protected users
+.PARAMETER KerbAuthPolName
+    Is the name of the Kerberos Authentication Policy
+.OUTPUTS 
+    $True if all users in the privilegd OU are marked as sensitive and the kerberos authentication policy is applied
+    $False
+#>
 function Set-TierLevelIsolation{
     param(
         [Parameter (Mandatory = $true)]
@@ -176,56 +149,58 @@ function Set-TierLevelIsolation{
         [Parameter (Mandatory = $true)]
         [string]$KerbAuthPolName
     )
+    $retval = $false
     try {
         $DomainDN = (Get-ADDomain -Server $DomainDNS).DistinguishedName
         #Validate the Kerboers Authentication policy exists. If not terminate the script with error code 0xA3. 
         $KerberosAuthenticationPolicy = Get-ADAuthenticationPolicy -Filter "Name -eq '$($KerbAuthPolName)'"
         if ($null -eq $KerberosAuthenticationPolicy){
-            Write-Log -Message "Tier 0 Kerberos Authentication Policy '$KerberosPolicyName' not found on AD. Script terminates with error 0xA3" -Severity Error -EventID 2002
+            Write-Log -Message "Tier 0 Kerberos Authentication Policy '$KerberosPolicyName' not found on AD" -Severity Error -EventID 2101
             return $false
         }
-        $oProtectedUsersGroup = Get-ADGroup -Identity "$((Get-ADDomain -Server $Domain).DomainSID)-525" -Server $DomainDNS -Properties member
+        $oProtectedUsersGroup = Get-ADGroup -Identity "$((Get-ADDomain -Server $DomainDNS).DomainSID)-525" -Server $DomainDNS -Properties member
         foreach ($OU in $OrgUnits){
-            if ($OU -notlike "*,DC=*"){ $OU = "$OU,$((GET-ADDomain -Server $Domain).DistinguishedName)"}
             if ($OU -like "*$DomainDN"){
                 if ($null -eq (Get-ADOrganizationalUnit -Filter "DistinguishedName -eq '$OU'" -Server $DomainDNS)){
-                    Write-Log -Message "The OU $OU doesn't exists in $DomainDNS" -Severity Warning -EventID 2100
+                    Write-Log -Message "The OU $OU doesn't exists in $DomainDNS" -Severity Warning -EventID 2102
                 } else {
                     foreach ($user in (Get-ADUser -SearchBase $OU -Filter * -Properties msDS-AssignedAuthNPolicy,memberOf,UserAccountControl -SearchScope Subtree -Server $DomainDNS)){
                         if ($user.SID -like "*-500"){
-                            Write-Log -Message "Built in Administrator (-500) is located in $OU" -Severity Warning -EventID 2101
+                            Write-Log -Message "Built in Administrator (-500) is located in $OU" -Severity Warning -EventID 2103
                             #ignore the built-in administrator
                         } else {
                             #Kerberos Authentication Policy validation
-                            if ($user.'msDS-AssignedAuthNPolicy' -ne $KerbAuthPolName){
-                                Write-Log "Adding Kerberos Authentication Policy $KerbAuthPolName on $User" -Severity Information -EventID 2102
+                            if ($user.'msDS-AssignedAuthNPolicy' -ne $KerberosAuthenticationPolicy.DistinguishedName){
+                                Write-Log "Adding Kerberos Authentication Policy $KerbAuthPolName on $User" -Severity Information -EventID 2104
                                 Set-ADUser $user -AuthenticationPolicy $KerbAuthPolName -Server $DomainDNS
                             }
                             #User account control validation
                             if (($user.UserAccountControl -BAND 1048576) -ne 1048576){
                                 Set-ADAccountControl -Identity $user -AccountNotDelegated $True -Server $DomainDNS
-                                Write-Log -Message "Mark $($User.DistinguishedName) as sensitive and cannot be delegated" -Severity Information -EventID 2103
+                                Write-Log -Message "Mark $($User.DistinguishedName) as sensitive and cannot be delegated" -Severity Information -EventID 2105
                             }
                             #Protected user group validation
                             if ($AddProtectedUsersGroup -and ($oProtectedUsersGroup.member -notcontains $user.Distiguishedname)){
                                 Add-ADGroupMember -Identity $oProtectedUsersGroup $user -Server $DomainDNS
-                                Write-Log "User $($user.Distiguishedname) is addeded to protected users in $Domain" -Severity Information -EventID 2104
+                                Write-Log "User $($user.Distiguishedname) is addeded to protected users in $Domain" -Severity Information -EventID 2106
                             }
                         }
                     }
                 }
             }
         }
+        $retval = $true
     }
     catch [Microsoft.ActiveDirectory.Management.ADException]{
-        Write-Log "a access denied error occurs while changing $user attribute" -Severity Error -EventID 2105
+        Write-Log "a access denied error occurs while changing $user attribute" -Severity Error -EventID 2107
     }
     catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException]{
-        Write-Log "Cannot enumerrate users" -Severity Error -EventID 2106
+        Write-Log "Cannot enumerrate users" -Severity Error -EventID 2108
     }
     catch{
-        Write-Log "A unexpected error occured $($error[0])" -Severity Error -EventID 2107
-    }   
+        Write-Log "A unexpected error occured $($error[0])" -Severity Error -EventID 2109
+    } 
+    return $retval  
 }
 
 <#
@@ -239,6 +214,10 @@ function Set-TierLevelIsolation{
     - is the SID of the AD group
 .PARAMETER DomainDNSName
     -is the domain DNS name of the AD object
+.PARAMETER PrivilegedOU
+    -is a array of Distinguishednames to the privileged user OUs
+.PARAMETER ServiceAccountPath
+    -is a array of distinguishednames to the service account OU
 .EXAMPLE
     validateAndRemoveUser -SID "S-1-5-<domain sid>-<group sid>" -DomainDNS contoso.com
 
@@ -247,14 +226,21 @@ function validateAndRemoveUser{
     [CmdletBinding(SupportsShouldProcess=$true)]
     param(
         #The SID uof the group
+        [Parameter (Mandatory = $true)]
         [string] $SID,
         #The DNS domain Name
-        [string] $DomainDNSName
+        [Parameter (Mandatory = $true)]
+        [string] $DomainDNSName,
+        [Parameter(Mandatory = $true)]
+        [string[]] $PrivilegedOU,
+        [Parameter(Mandatory = $true)]
+        [string[]] $ServiceAccountPath
+
     )
     $Group = Get-ADGroup -Identity $SID -Properties members,canonicalName -Server $DomainDNSName 
     #validate the SID exists
     if ($null -eq $Group){
-        Write-Log "Can't validate $SID. This SID is not available" -Severity Warning -EventID 
+        Write-Log "Can't validate $SID. This SID is not available" -Severity Warning -EventID 2200
         return
     }
     #walk through all members of the group and check this member is a valid user or group
@@ -270,33 +256,73 @@ function validateAndRemoveUser{
                     ($member.objectSid.Value   -notlike "*-520")                              -and ` #ignore if the member is Group Policy Creator
                     ($member.objectSid.Value   -notlike "*-522")                              -and ` #ignore if the member is cloneable domain controllers
                     ($member.objectSid.Value   -notlike "*-527")                              -and ` #ignore if the member is Enterprise Key Admins
-                    ($member.objectClass       -ne "msDS-GroupManagedServiceAccount")         -and ` #ignore if the member is a GMSA
-                    ($member.distinguishedName -notlike "*,$PrivilegedOUPath,*")              -and ` #ignore if the member is located in the Tier 0 user OU
-                    ($member.distinguishedName -notlike "*,$PrivilegedServiceAccountOUPath*") -and ` #ignore if the member is located in the service account OU
-                    ($excludeUser              -notlike "*$($member.DistinguishedName)*" )           #ignore if the member is in the exclude user list
-                    ){    
-                        try{
-                            Write-Log -Message "remove $member from $($Group.DistinguishedName)" -Severity Warning -EventID 2201
-                            Set-ADObject -Identity $Group -Remove @{member="$($member.DistinguishedName)"} -Server $DomainDNSName
-                        }
-                        catch [Microsoft.ActiveDirectory.Management.ADServerDownException]{
-                            Write-Log -Message "can't connect to AD-WebServices. $($member.DistinguishedName) is not remove from $($Group.DistinguishedName)" -Severity Error -EventID 2202
-                        }
-                        catch [Microsoft.ActiveDirectory.Management.ADException]{
-                            Write-Log -Message "Cannot remove $($member.DistinguishedName) from $($Error[0].CategoryInfo.TargetName) $($Error[0].Exception.Message)" -Severity Error -EventID 2203
-                        }
-                        catch{
-                            Write-Log -Message $Error[0].GetType().Name -Severity Error -EventID 2204
+                    ($member.objectClass       -ne "msDS-GroupManagedServiceAccount") #        -and ` #ignore if the member is a GMSA
+#                    ($member.distinguishedName -notlike "*,$PrivilegedOUPath,*")              -and ` #ignore if the member is located in the Tier 0 user OU
+#                    ($member.distinguishedName -notlike "*,$PrivilegedServiceAccountOUPath*") -and ` #ignore if the member is located in the service account OU
+#                    ($excludeUser              -notlike "*$($member.DistinguishedName)*" )           #ignore if the member is in the exclude user list
+                    ){
+                        if (($PrivilegedOU | Where-Object {$member.DistinguishedName -like "*$_"} ).Count -eq 0){
+                            #the user is not located in the privileged OU check the user is located in the service account OU
+                            if (($ServiceAccountPath | Where-Object {$member.DistinguishedName -like "*$_"}).count -eq 0){
+                                #The user is not located in the service account OU. Try to remove the user from the current group
+                                try{
+                                    Write-Log -Message "remove $member from $($Group.DistinguishedName)" -Severity Warning -EventID 2201
+                                    Set-ADObject -Identity $Group -Remove @{member="$($member.DistinguishedName)"} -Server $DomainDNSName
+                                }
+                                catch [Microsoft.ActiveDirectory.Management.ADServerDownException]{
+                                    Write-Log -Message "can't connect to AD-WebServices. $($member.DistinguishedName) is not remove from $($Group.DistinguishedName)" -Severity Error -EventID 2202
+                                }
+                                catch [Microsoft.ActiveDirectory.Management.ADException]{
+                                    Write-Log -Message "Cannot remove $($member.DistinguishedName) from $($Error[0].CategoryInfo.TargetName) $($Error[0].Exception.Message)" -Severity Error -EventID 2203
+                                }
+                                catch{
+                                    Write-Log -Message $Error[0].GetType().Name -Severity Error -EventID 2204
+                                }
+                            } else {
+                                Write-Log -Message "The user $($member.DistinguishedName) is located in a Service account OU and will not be removed from the privileged groups $($Group.Distiguishedname)" -EventID 2205 -Severity Debug
+                            }
+                        } else {
+                            Write-Log -Message "The user $($member.Distiguishedname) is member of a privileged user OU" -Severity Debug -EventID 2206
                         }
                     }
-            }
+                }
             "group"{
                 $MemberDomainDN = [regex]::Match($member.DistinguishedName,"DC=.*").value
                 $MemberDNSroot = (Get-ADObject -Filter "ncName -eq '$MemberDomainDN'" -SearchBase (Get-ADForest).Partitionscontainer -Properties dnsRoot).dnsRoot
-                validateAndRemoveUser -SID $member.ObjectSid.Value -DomainDNSName $MemberDNSroot
+                validateAndRemoveUser -SID $member.ObjectSid.Value -DomainDNSName $MemberDNSroot -PrivilegedOU $PrivilegedOU -ServiceAccountPath $ServiceAccountPath
             }
         }
     }        
+}
+
+function ConvertTo-DistinguishedNames{
+    param (
+        [Parameter(Mandatory = $true)]
+        [string[]] $DomainsDNS,
+        [Parameter (Mandatory = $true)]
+        [string[]] $DistinguishedNames
+    )
+    $FQDN = @()
+    $DomainDN = @()
+    
+    try {
+        foreach ($Domain in $DomainsDNS){
+            $DomainDN += (Get-ADDomain).DistinguishedName
+        }        
+    }
+    catch [Microsoft.ActiveDirectory.Management.ADServerDownException]{
+        Write-Log -Message "Failed to contact $domain" -Severity Debug -EventID 2300
+    }
+    foreach ($DN in $DistinguishedNames){
+        if ($DN -like "*,DC=*"){
+            $FQDN += $DN
+        } else {
+            foreach ($DomDN in $DomainDN){
+                $FQDN += "$DN,$DomDN"
+            }
+        }
+    }
+    return $FQDN
 }
 #endregion
 
@@ -334,8 +360,8 @@ if (Test-Path $LogFile) {
     }
 }
 #endregion
-Write-Log -Message "Tier Isolation computer management $Scope version $ScriptVersion started" -Severity Information -EventID 1
-Write-Log -Message $MyInvocation.Line -Severity Debug -EventID 0 # writing the parameter to the log file
+Write-Log -Message "Tier Isolation user management $Scope version $ScriptVersion started" -Severity Information -EventID 2000
+Write-Log -Message $MyInvocation.Line -Severity Debug -EventID 2001 # writing the parameter to the log file
 #region read configuration
 try{
     if ($ConfigFile -eq '') {
@@ -343,26 +369,57 @@ try{
         #last resort if the configfile paramter is not available and no configuration is stored in the AD. check for the dafault configuration file
         if ($null -eq $config){
             if ((Test-Path -Path $DefaultConfigFile)){
-                Write-Log -Message "Read config from $ConfigFile" -Severity Debug -EventID 0
+                Write-Log -Message "Read config from $ConfigFile" -Severity Debug -EventID 2003
                 $config = Get-Content $DefaultConfigFile | ConvertFrom-Json            
             } else {
-                Write-Log -Message "Can't find the configuration in $DefaultConfigFile or Active Directory" -Severity Error -EventID 2000
+                Write-Log -Message "Can't find the configuration in $DefaultConfigFile or Active Directory" -Severity Error -EventID 2004
                 return 0xe7
             }
         }
     }
     else {
-        Write-Log -Message "Read config from $ConfigFile" -Severity Debug -EventID 0
+        Write-Log -Message "Read config from $ConfigFile" -Severity Debug -EventID 2003
         $config = Get-Content $ConfigFile | ConvertFrom-Json 
     }
 }
 catch {
-    Write-Log -Message "error reading configuration" -Severity Error -EventID 2001
+    Write-Log -Message "error reading configuration" -Severity Error -EventID 2005
     return 0x3E8
 }
 #if the paramter $scope is set, it will overwrite the saved configuration
+
 if ($null -eq $scope ){
     $scope = $config.scope
+} 
+switch ($scope) {
+    "Tier-0" { 
+        if ($config.scope -eq "Tier-1"){
+            Write-Log -Message "The scope paramter $scope does not match to the configuration scope $($config.scope) the script is terminated" -Severity Error -EventID 2006
+            return 0x3E8
+        } else {
+            $config.Tier0UsersPath = ConvertTo-DistinguishedNames -DomainsDNS $config.Domains -DistinguishedNames $config.Tier0UsersPath
+            $config.Tier0ServiceAccountPath = ConvertTo-DistinguishedNames -DomainsDNS $config.Domains -DistinguishedNames $config.Tier0ServiceAccountPath
+            break
+        }
+    }
+    "Tier-1"{
+        if ($config.scope -eq "Tier-0"){
+            Write-Log -Message "The scope paramter $scope does not match to the configuration scope $($config.scope) the script is terminated" -Severity Error -EventID 2006
+            return 0x3E8
+        } else {
+            $config.Tier1UsersPath = ConvertTo-DistinguishedNames -DomainsDNS $config.Domains -DistinguishedNames $config.Tier1UsersPath
+            $config.Tier1ServiceAccountPath = ConvertTo-DistinguishedNames -DomainsDNS $config.Domains -DistinguishedNames $config.Tier1ServiceAccountPath
+            break
+        }
+    }
+    Default {
+        Write-Log -Message "Current scope is $scope" -Severity Debug -EventID 2006
+        $config.Tier0UsersPath = ConvertTo-DistinguishedNames -DomainsDNS $config.Domains -DistinguishedNames $config.Tier0UsersPath
+        $config.Tier0ServiceAccountPath = ConvertTo-DistinguishedNames -DomainsDNS $config.Domains -DistinguishedNames $config.Tier0ServiceAccountPath
+        $config.Tier1UsersPath = ConvertTo-DistinguishedNames -DomainsDNS $config.Domains -DistinguishedNames $config.Tier1UsersPath
+        $config.Tier1ServiceAccountPath = ConvertTo-DistinguishedNames -DomainsDNS $config.Domains -DistinguishedNames $config.Tier1ServiceAccountPath
+        break
+    }
 }
 #endregion
 $T0ProtectedUsers = $false
@@ -371,6 +428,7 @@ switch ($config.ProtectedUsers) {
     {-contains "Tier-0"} { $T0ProtectedUsers = $true }
     {-contains "Tier-1"} { $T1ProtectedUsers = $true }
 }
+
 foreach ($Domain in $config.Domains){
     if ($scope -ne "Tier-1"){
         Set-TierLevelIsolation -DomainDNS $Domain -OrgUnits $config.Tier0UsersPath -AddProtectedUsersGroup $T0ProtectedUsers -KerbAuthPolName $config.T0KerbAuthPolName
@@ -380,25 +438,26 @@ foreach ($Domain in $config.Domains){
     }
     if ($config.PrivilegedGroupsCleanUp){
         foreach ($relativeSid in $PrivlegeDomainSid) {
-            validateAndRemoveUser -SID "$((Get-ADDomain -server $DomainName).DomainSID)-$RelativeSid" -DomainDNSName $DomainName
+            Write-Host "service Accounts"
+            validateAndRemoveUser -SID "$((Get-ADDomain -server $Domain).DomainSID)-$RelativeSid" -DomainDNSName $Domain -PrivilegedOU $config.Tier0UsersPath -ServiceAccountPath $config.Tier0ServiceAccountPath
         }
         #Backup Operators
-        validateAndRemoveUser -SID "S-1-5-32-551" -DomainDNSName $DomainName
+        validateAndRemoveUser -SID "S-1-5-32-551" -DomainDNSName $Domain -PrivilegedOU $config.Tier0UsersPath -ServiceAccountPath $config.Tier0ServiceAccountPath
         #Print Operators
-        validateAndRemoveUser -SID "S-1-5-32-550" -DomainDNSName $DomainName
+        validateAndRemoveUser -SID "S-1-5-32-550" -DomainDNSName $Domain -PrivilegedOU $config.Tier0UsersPath -ServiceAccountPath $config.Tier0ServiceAccountPath
         #Server Operators
-        validateAndRemoveUser -SID "S-1-5-32-549" -DomainDNSName $DomainName
+        validateAndRemoveUser -SID "S-1-5-32-549" -DomainDNSName $Domain -PrivilegedOU $config.Tier0UsersPath -ServiceAccountPath $config.Tier0ServiceAccountPath
         #Server Operators
-        validateAndRemoveUser -SID "S-1-5-32-548" -DomainDNSName $DomainName
+        validateAndRemoveUser -SID "S-1-5-32-548" -DomainDNSName $Domain -PrivilegedOU $config.Tier0UsersPath -ServiceAccountPath $config.Tier0ServiceAccountPath
         #Administrators
-        validateAndRemoveUser -SID "S-1-5-32-544" -DomainDNSName $DomainName
+        validateAndRemoveUser -SID "S-1-5-32-544" -DomainDNSName $Domain -PrivilegedOU $config.Tier0UsersPath -ServiceAccountPath $config.Tier0ServiceAccountPath
     }
 }
 if ($config.PrivilegedGroupsCleanUp){
     $forestDNS = (Get-ADDomain).Forest
     $forestSID = (Get-ADDomain -Server $forestDNS).DomainSID.Value
-    Write-Log "searching for unexpected users in schema admins" -Severity Debug
-    validateAndRemoveUser -SID "$forestSID-518" -DomainDNSName $forestDNS
-    Write-Log "searching for unexpteded users in enterprise admins" -Severity Debug
-    validateAndRemoveUser -SID "$forestSID-519" -DomainDNSName $forestDNS
+    Write-Log "searching for unexpected users in schema admins" -Severity Debug -EventID 2008
+    validateAndRemoveUser -SID "$forestSID-518" -DomainDNSName $forestDNS -PrivilegedOU $config.Tier0UsersPath -ServiceAccountPath $config.Tier0ServiceAccountPath
+    Write-Log "searching for unexpteded users in enterprise admins" -Severity Debug -EventID 2009
+    validateAndRemoveUser -SID "$forestSID-519" -DomainDNSName $forestDNS -PrivilegedOU $config.Tier0UsersPath -ServiceAccountPath $config.Tier0ServiceAccountPath
 }

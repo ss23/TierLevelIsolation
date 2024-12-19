@@ -47,7 +47,7 @@ is required to provide the same OU structure in the entrie forest
     $False
         If at least one OU cannot created. It the user has not the required rights, the function will also return $false 
 #>
-function CreateOU {
+function New-TierLevelOU {
     [CmdletBinding ( SupportsShouldProcess)]
     param (
         [Parameter(Mandatory)]
@@ -56,17 +56,14 @@ function CreateOU {
         [string]$DomainDNS
     )
     try {
-        Write-Debug "CreateOU called the $OUPath $DomainDNS"
         #load the OU path into array to create the entire path step by step
         $DomainDN = (Get-ADDomain -Server $DomainDNS).DistinguishedName
         #normalize OU remove 
-        Write-Debug "Starting createOU $OUPath $DomainDNS"
         $OUPath = [regex]::Replace($OUPath, "\s?,\s?", ",")
         if ($OUPath.Contains("DC=")) {
             $OUPath = [regex]::Match($OUPath, "((CN|OU)=[^,]+,)+")
             $OUPath = $OUPath.Substring(0, $OUPath.Length - 1)
         }
-        Write-Debug "Normalized OUPath $OUPath"
         $aryOU = $OUPath.Split(",")
         $BuildOUPath = ""
         #walk through the entire domain 
@@ -76,20 +73,14 @@ function CreateOU {
             #if this is the first run of the for loop the OU must in the root. The searbase paramenter is not required 
             if ($i -eq $aryOU.Count) {
                 #create the OU if it doesn|t exists in the domain root. 
-                if ([bool](Get-ADOrganizationalUnit -Filter "Name -eq '$OUName'" -SearchScope OneLevel -server $DomainDNS)) {
-                    Write-Debug "OU=$OUName,$DomainDN already exists no actions needed"
-                }
-                else {
+                if ([bool]!(Get-ADOrganizationalUnit -Filter "Name -eq '$OUName'" -SearchScope OneLevel -server $DomainDNS)) {
                     Write-Host "$OUName doesn't exist in $OUPath. Creating OU" -ForegroundColor Green
                     New-ADOrganizationalUnit -Name $OUName -Server $DomainDNS                        
                 }
             }
             else {
                 #create the sub ou if required
-                if ([bool](Get-ADOrganizationalUnit -Filter "Name -eq '$OUName'" -SearchBase "$BuildOUPath$DomainDN" -Server $DomainDNS)) {
-                    Write-Debug "$OUName,$OUPath already exists no action needed" 
-                }
-                else {
+                if ([bool]!(Get-ADOrganizationalUnit -Filter "Name -eq '$OUName'" -SearchBase "$BuildOUPath$DomainDN" -Server $DomainDNS)) {
                     Write-Host "$OUPath,$DomainDN doesn't exist. Creating" -ForegroundColor Green
                     New-ADOrganizationalUnit -Name $OUName -Path "$BuildOUPath$DomainDN" -Server $DomainDNS
                 }
@@ -206,8 +197,11 @@ $DefaultT1KerbAuthPolName = "Tier 1 restriction"
 $DefaultT0Users = "OU=User,OU=Tier 0,OU=Admin"
 $DefaultT1Users = "OU=User,OU=Tier 1,OU=Admin"
 #Default path of the Tier Level users OU
-$DefaultT0Computers = "OU=Computers,OU=Tier 0,OU=Admin"
-$DefaultT1Computers = "OU=Computers,OU=Tier 1,OU=Admin"
+$DefaultT0Computers          =        "OU=Computers,OU=Tier 0,OU=Admin"
+$DefaultT0ServiceAccountPath = "OU=Service Accounts,OU=Tier 0,OU=Admin"
+$DefaultT1Computers          =        "OU=Computers,OU=Tier 1,OU=Admin"
+
+
 #Default name of the Claim groups
 $DefaultT0ComputerGroupName = "Tier 0 Computers"
 $DefaultT1ComputerGroupName = "Tier 1 Computers"
@@ -218,21 +212,16 @@ $DefaultGMSAName = "TierLevel-mgmt"
 $ScriptTarget              = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts"
 #Default FQDN configuration file path
 $ConfigFile                = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts\Tiering.config"
-
 $EnablePrivilegeGroupCleanUP = $true
-
 #constantes
 $TaskSchedulerXML          = "ScheduledTasks.xml"
-$ComputerManagementScript  = "TierLevelComputer.ps1"
-$UserManagementScript      = "TierlevelUser.ps1"
 $GPOName = "Tier Level Isolation"
+
 
 #$RegExOUPattern = "((OU|CN)=[^,]+,)*(OU|CN)=[^,]+$"
 $RegExDNDomain = "(DC=[^,]+,)*DC=.+$"
-
 $DefaultDomainControllerPolicy = "6AC1786C-016F-11D2-945F-00C04FB984F9"
 $DefaultDomainPolicy = "31B2F340-016D-11D2-945F-00C04FB984F9"
-
 $KDCEnableClaim = @{
     Key = "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\KDC\Parameters"
     ValueName = "EnableCbacAndArmor"
@@ -248,17 +237,18 @@ $ClientKerberosAmoring = @{
 
 #Inital configuration object
 $config = New-Object psobject
-$config | Add-Member -MemberType NoteProperty -Name Tier0ComputerPath   -Value @()
-$config | Add-Member -MemberType NoteProperty -Name Tier1ComputerPath   -Value @()
-$config | Add-Member -MemberType NoteProperty -Name Tier0ComputerGroup  -Value $DefaultT0ComputerGroupName
-$config | Add-Member -MemberType NoteProperty -Name Tier1ComputerGroup  -Value $DefaultT1ComputerGroupName
-$config | Add-Member -MemberType NoteProperty -Name Tier0UsersPath      -Value @()
-$config | Add-Member -MemberType NoteProperty -Name tier1UsersPath      -Value @()
-$config | Add-Member -MemberType NoteProperty -Name T0KerbAuthPolName   -Value $DefaultT0KerbAuthPolName
-$config | Add-Member -MemberType NoteProperty -Name T1KerbAuthPolName   -Value $DefaultT1KerbAuthPolName
-$config | Add-Member -MemberType NoteProperty -Name Domains             -Value @()
-$config | Add-Member -MemberType NoteProperty -Name scope               -Value $scope
-$config | Add-Member -MemberType NoteProperty -Name ProtectedUsers      -Value @()
+$config | Add-Member -MemberType NoteProperty -Name Tier0ComputerPath       -Value @()
+$config | Add-Member -MemberType NoteProperty -Name Tier1ComputerPath       -Value @()
+$config | Add-Member -MemberType NoteProperty -Name Tier0ComputerGroup      -Value $DefaultT0ComputerGroupName
+$config | Add-Member -MemberType NoteProperty -Name Tier1ComputerGroup      -Value $DefaultT1ComputerGroupName
+$config | Add-Member -MemberType NoteProperty -Name Tier0ServiceAccountPath -Value @()
+$config | Add-Member -MemberType NoteProperty -Name Tier0UsersPath          -Value @()
+$config | Add-Member -MemberType NoteProperty -Name Tier1UsersPath          -Value @()
+$config | Add-Member -MemberType NoteProperty -Name T0KerbAuthPolName       -Value $DefaultT0KerbAuthPolName
+$config | Add-Member -MemberType NoteProperty -Name T1KerbAuthPolName       -Value $DefaultT1KerbAuthPolName
+$config | Add-Member -MemberType NoteProperty -Name Domains                 -Value @()
+$config | Add-Member -MemberType NoteProperty -Name scope                   -Value $scope
+$config | Add-Member -MemberType NoteProperty -Name ProtectedUsers          -Value @()
 $config | Add-Member -MemberType NoteProperty -Name PrivilegedGroupsCleanUp -Value $EnablePrivilegeGroupCleanUP
 
 
@@ -296,7 +286,16 @@ if (((Get-ADForest).Domains.count -eq 1) -or ($SingleDomain)){
     if (($strReadHost -eq '') -or ($strReadHost -like "y*")){
         $SingleDomain = $false
         Write-Host "Forest Mode is enabled"
-        $config.Domains += (Get-ADForest).Domains
+        foreach ($Domain in (Get-ADForest).Domains){
+            try{
+                Write-Host "connecting $Domain"
+                Get-ADDomain -Server $Domain | Out-Null
+                $config.Domains += $Domain
+            }
+            catch [Microsoft.ActiveDirectory.Management.ADServerDownException]{
+                Write-Host "Unable to contact $Domain. Validate the Kerberos Amoring is activated" -ForegroundColor Yellow
+            }
+        }
     } else {
         $SingleDomain = $true
         Write-Host "Tierl Level isolation will be integrated on the current domain $CurrentDomainDNS"
@@ -320,7 +319,7 @@ do{
         Default {$scope = ""}
     }
 }while ($scope -eq '')
-
+$config.scope = $scope
 if (($scope -eq "Tier-0") -or ( $scope -eq "All-Tiers") ){
     Write-Host "Tier 0 isolation paramter "
     do {
@@ -330,6 +329,14 @@ if (($scope -eq "Tier-0") -or ( $scope -eq "All-Tiers") ){
             $config.Tier0UsersPath += $strReadHost
         }
         $strReadHost = Read-Host "Do you want to add another Tier 0 user OU (y/[n])"
+    } while ($strReadHost -like "y*")
+    do {
+        $strReadHost = Read-Host "Distinguishedname of the Tier 0 service account OU($defaultT0ServiceAccountPath)"
+        if ($strReadHost -eq '') {$strReadHost = $DefaultT0ServiceAccountPath}
+        if ($config.Tier0ServiceAccountPath -notcontains $strReadHost){
+            $config.Tier0ServiceAccountPath += $strReadHost
+        }
+        $strReadHost = Read-Host "Do you want to add another Tier 0 service account OU (y/[n])"
     } while ($strReadHost -like "y*")
     do {
         $strReadHost = Read-Host "Distinguishedname of the Tier 0 computer OU ($defaultT0Computers)"
@@ -342,6 +349,7 @@ if (($scope -eq "Tier-0") -or ( $scope -eq "All-Tiers") ){
     $strReadHost = Read-Host "Provide the Tier 0 Kerberos Authentication policy name ($DefaultT0KerbAuthPolName)"
     if ($strReadHost -eq '') {$strReadHost = $DefaultT0KerbAuthPolName}
     $config.T0KerbAuthPolName = $strReadHost
+
 }
 $strReadHost = Read-Host "Provide the Tier 0 Computer Group name ($DefaultT0ComputerGroupName)"
 if ($strReadHost -eq ''){$strReadHost = $DefaultT0ComputerGroupName}
@@ -392,25 +400,58 @@ if ($strReadHost -like "n*"){
 #region OU validation / creation
 foreach ($domain in $config.Domains){
     $DomainDN = (Get-ADDomain).DistinguishedName
-    if (($scope -eq "Tier-0") -or ($scope -eq "All-Tiers")){
-        foreach ($OU in $config.Tier0ComputerPath){
-            if ($OU -like "*DC=*"){
-                if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
-                    CreateOU -OUPath "$OU" -DomainDNS $domain
-                }
-            } else {
-                CreateOU -OUPath "$OU,$DomainDN" -DomainDNS $domain
+    foreach ($OU in $config.Tier0ComputerPath){
+        if ($OU -like "*DC=*"){
+            if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
+                New-TierLevelOU -OUPath "$OU" -DomainDNS $domain |Out-Null
             }
+        } else {
+            New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain | Out-Null
+        }
+    }
+    foreach ($OU in $config.Tier0UsersPath){
+        if ($OU -like "*DC=*"){
+            if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
+                New-TierLevelOU -OUPath "$OU" -DomainDNS $domain |Out-Null
+            }
+        } else {
+            New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain | Out-Null
+        }
+    }
+    foreach ($OU in $config.Tier0ServiceAccountPath){
+        if ($OU -like "*DC=*"){
+            if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
+                New-TierLevelOU -OUPath "$OU" -DomainDNS $domain |Out-Null
+            }
+        } else {
+            New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain | Out-Null
         }
     }
     if (($scope -eq "Tier-1") -or ($scope -eq "All-Tiers")){
+        foreach ($OU in $config.Tier1ComputerPath){
+            if ($OU -like "*DC=*"){
+                if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
+                    foreach ($OU in $config.Tier0UsersPath){
+                        if ($OU -like "*DC=*"){
+                            if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
+                                New-TierLevelOU -OUPath "$OU" -DomainDNS $domain |Out-Null
+                            }
+                        } else {
+                            New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain | Out-Null
+                        }
+                    } -OUPath $OU -DomainDNS $domain |Out-Null
+                }
+            } else {
+                New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain |Out-Null
+            }
+        }
         foreach ($OU in $config.tier1UsersPath){
             if ($OU -like "*DC=*"){
                 if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
-                    createOU -OUPath $OU -DomainDNS $domain
+                    New-TierLevelOU -OUPath $OU -DomainDNS $domain |Out-Null
                 }
             } else {
-                CreateOU -OUPath "$OU,$DomainDN" -DomainDNS $domain
+                New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain |Out-Null
             }
         }
     }
@@ -517,15 +558,24 @@ catch {
 try {
 
     $ScheduleTaskRaw = Get-Content ".\ScheduledTasksTemplate.xml"
-    $ScheduleTaskRaw.Replace("#ScriptPath", $ScriptTarget) | Out-Null
-    $ScheduleTaskRaw.Replace("#GmsaName", $GMSAName) | Out-Null
+    $ScheduleTaskRaw = $ScheduleTaskRaw.Replace("#ScriptPath", $ScriptTarget) 
+    $ScheduleTaskRaw = $ScheduleTaskRaw.Replace("#GmsaName", $GMSAName)
     [XML]$ScheduleTaskXML = $ScheduleTaskRaw
     #Enable Claim Support on Domain Controllers. 
     #Write this setting to the default domain controller policy  
     foreach ($domain in $config.Domains){
-        Set-GPRegistryValue @KDCEnableClaim        -Domain $domain -Guid $DefaultDomainControllerPolicy
-        Set-GPRegistryValue @ClientKerberosAmoring -Domain $domain -Guid $DefaultDomainControllerPolicy
-        Set-GPRegistryValue @ClientKerberosAmoring -Domain $domain -Guid $DefaultDomainPolicy
+        $RegKey = Get-GPRegistryValue -Domain $domain -Guid $DefaultDomainControllerPolicy -Key $KDCEnableClaim.Key -ErrorAction SilentlyContinue
+        if ( $RegKey.value -ne 1){
+            Set-GPRegistryValue @KDCEnableClaim        -Domain $domain -Guid $DefaultDomainControllerPolicy
+        }
+        $RegKey = Get-GPRegistryValue -Domain $Domain -Guid $DefaultDomainControllerPolicy -key $ClientKerberosAmoring.Key -ErrorAction SilentlyContinue
+        if ($RegKey.value -ne 1){
+            Set-GPRegistryValue @ClientKerberosAmoring -Domain $domain -Guid $DefaultDomainControllerPolicy
+        }
+        $RegKey = Get-GPRegistryValue -Domain $Domain -Guid $DefaultDomainPolicy -key $ClientKerberosAmoring.Key -ErrorAction SilentlyContinue
+        if ($RegKey.value -ne 1){
+            Set-GPRegistryValue @ClientKerberosAmoring -Domain $domain -Guid $DefaultDomainPolicy
+        }
     }
     #Create new Group Policy if required to manage Tier level isolation
     $oGPO = Get-GPO -Name $GPOName -ErrorAction SilentlyContinue
@@ -538,28 +588,41 @@ try {
     if (!(Test-Path "$GPPath")){
         New-Item -ItemType Directory $GPPath | Out-Null
     }
-    if ($scope -ne "Tier-1"){
-        "Remove Tier 0 tasks"
-        $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{B1168190-7E2C-4177-9391-B1FFBCDF4774}'}
-        $task.ParentNode.RemoveChild($Task) | Out-Null
-        $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{A26FE3E3-9BD7-4172-92DF-748622701717}'}
-        $task.ParentNode.RemoveChild($Task) | Out-Null
-    }
-    if ($scope -ne "Tier-0"){
-        "Remove Tier 1 tasks"
-        $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{D9E485BC-145A-47BC-B6C0-A3457662E26A}'}
-        $task.ParentNode.RemoveChild($Task) | Out-Null
-        $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{1CD57939-879D-44F9-A38F-7C140A58F041}'}
-        $task.ParentNode.RemoveChild($Task) | Out-Null
+    switch ($scope){
+        "Tier-1"{
+            #Remove the Tier 0 computer and user management tasks
+            "Remove Tier 0 tasks"
+            $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{B1168190-7E2C-4177-9391-B1FFBCDF4774}'}
+            $task.ParentNode.RemoveChild($Task) | Out-Null
+            $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{A26FE3E3-9BD7-4172-92DF-748622701717}'}
+            $task.ParentNode.RemoveChild($Task) | Out-Null
+        }
+        "Tier-0" {
+            #Remvoe the Tier1 comuputer and user management tasks
+            "Remove Tier 1 tasks"
+            $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{D9E485BC-145A-47BC-B6C0-A3457662E26A}'}
+            $task.ParentNode.RemoveChild($Task) | Out-Null
+            $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{1CD57939-879D-44F9-A38F-7C140A58F041}'}
+            $task.ParentNode.RemoveChild($Task) | Out-Null
+        }
     }
     if ($config.Domains.Count -eq 1){
         $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{BCB5982B-9E75-4A3B-8E10-C83565DFFCE4}'}
         $task.ParentNode.RemoveChild($Task) | Out-Null
     }
     $ScheduleTaskXML.Save("$GPPath\$TaskSchedulerXML")
-    $oGPO | New-GPLink -Target (Get-ADDomain).DomainControllersContainer -LinkEnabled Yes
-    Write-Host "Tier Level User Management Group Policy is linked to Domain Controllers OU" -ForegroundColor Yellow -BackgroundColor Blue
-    Write-Host "DO not forget to enabled Tier 0 user management task" -ForegroundColor Yellow
+    $LinkedTieringGP = (Get-GPInheritance -Target (Get-ADDomain).DomainControllersContainer).GpoLinks | Where-Object {$_.GpoId -eq "$($oGPO.ID)"}
+    if ($Null -eq $LinkedTieringGP){
+        $oGPO | New-GPLink -Target (Get-ADDomain).DomainControllersContainer -LinkEnabled Yes
+        Write-Host "Tier Level User Management Group Policy is linked to Domain Controllers OU" -ForegroundColor Yellow -BackgroundColor Blue
+        Write-Host "DO not forget to enabled Tier 0 user management task" -ForegroundColor Yellow
+    } else {
+        if (!$LinkedTieringGP.Enabled){
+            Write-Host "The Tiering group policy is linked to $((Get-ADDomain).DomainControllersContainer) but not enabled" -ForegroundColor Yellow
+            Write-Host "Validate the status for the Schedule tasks before you enbaled the group policy link" -ForegroundColor Yellow
+        }
+    }
+
 } 
 catch{
     Write-Host $error[0]
