@@ -23,18 +23,21 @@ possibility of such damages
     computer OU.
     The script allows multiple OU's for Tier 0 / 1
 .OUTPUTS 
-    None
+    The script does not produce any direct outputs.
 .PARAMETER ConfigFile
-    This is the full quaified path to the configuration file. If this parameter is empty, the script will
-    search for the configuration in Active Directory or on the SYSVOL path
+    The full path to the configuration file. If this parameter is not provided, the script will search for the configuration in Active Directory or on the SYSVOL path.
 .PARAMETER scope
-    defines which scope will be used. Possible scopes are:
-    Tier-0 only the Tier 0 computer group will be managed
-    Tier-1 only the Tier 1 computer group will be managed
-    All-Tiers   the computer group for Tier 0 and Tier1 will be managed
+    Defines the scope of the script. Possible values are:
+        Tier-0: Only the Tier 0 user accounts will be managed.
+        Tier-1: Only the Tier 1 user accounts will be managed.
+        All-Tiers: Both Tier 0 and Tier 1 user accounts will be managed.
 .NOTES
     Version 0.2.20241206
     Initial Version
+    Version 0.2.20241220
+        If a user is removed from a privileged group, the adminCount attribute will be removed from the user
+        The script will check if the user is located in a service account OU. If the user is located in a service account OU, the user will not be removed from the privileged group
+        
 
     All events written to the log file. Information, Warnings and error events are written to the eventlog
     All event IDs documented in EventID.md
@@ -268,6 +271,7 @@ function validateAndRemoveUser{
                                 try{
                                     Write-Log -Message "remove $member from $($Group.DistinguishedName)" -Severity Warning -EventID 2201
                                     Set-ADObject -Identity $Group -Remove @{member="$($member.DistinguishedName)"} -Server $DomainDNSName
+                                    Set-ADUser -Identity $member -Remove @{adminCount=1} -Server $member.canonicalName.Split("/")[0]
                                 }
                                 catch [Microsoft.ActiveDirectory.Management.ADServerDownException]{
                                     Write-Log -Message "can't connect to AD-WebServices. $($member.DistinguishedName) is not remove from $($Group.DistinguishedName)" -Severity Error -EventID 2202
@@ -307,7 +311,7 @@ function ConvertTo-DistinguishedNames{
     
     try {
         foreach ($Domain in $DomainsDNS){
-            $DomainDN += (Get-ADDomain).DistinguishedName
+            $DomainDN += (Get-ADDomain -Server $Domain).DistinguishedName
         }        
     }
     catch [Microsoft.ActiveDirectory.Management.ADServerDownException]{
@@ -331,7 +335,7 @@ function ConvertTo-DistinguishedNames{
 # Main program starts here
 ##############################################################################################################################
 #script Version 
-$ScriptVersion = "0.2.20241206"
+$ScriptVersion = "0.2.20241220"
 
 #region constantes
 $config = $null
@@ -361,7 +365,6 @@ if (Test-Path $LogFile) {
 }
 #endregion
 Write-Log -Message "Tier Isolation user management $Scope version $ScriptVersion started" -Severity Information -EventID 2000
-Write-Log -Message $MyInvocation.Line -Severity Debug -EventID 2001 # writing the parameter to the log file
 #region read configuration
 try{
     if ($ConfigFile -eq '') {
@@ -417,7 +420,6 @@ switch ($scope) {
         $config.Tier0UsersPath = ConvertTo-DistinguishedNames -DomainsDNS $config.Domains -DistinguishedNames $config.Tier0UsersPath
         $config.Tier0ServiceAccountPath = ConvertTo-DistinguishedNames -DomainsDNS $config.Domains -DistinguishedNames $config.Tier0ServiceAccountPath
         $config.Tier1UsersPath = ConvertTo-DistinguishedNames -DomainsDNS $config.Domains -DistinguishedNames $config.Tier1UsersPath
-        $config.Tier1ServiceAccountPath = ConvertTo-DistinguishedNames -DomainsDNS $config.Domains -DistinguishedNames $config.Tier1ServiceAccountPath
         break
     }
 }
@@ -431,14 +433,21 @@ switch ($config.ProtectedUsers) {
 
 foreach ($Domain in $config.Domains){
     if ($scope -ne "Tier-1"){
-        Set-TierLevelIsolation -DomainDNS $Domain -OrgUnits $config.Tier0UsersPath -AddProtectedUsersGroup $T0ProtectedUsers -KerbAuthPolName $config.T0KerbAuthPolName
+        if ((Set-TierLevelIsolation -DomainDNS $Domain -OrgUnits $config.Tier0UsersPath -AddProtectedUsersGroup $T0ProtectedUsers -KerbAuthPolName $config.T0KerbAuthPolName)){
+            Write-Log -Message "Tier 0 user isolated" -Severity Debug -EventID 2010
+        } else{
+            Write-Log -Message "Tier 0 user isolation failed" -Severity Debug -EventID 2011
+        }
     } 
     if ($scope -ne "Tier-0") {
-        Set-TierLevelIsolation -DomainDNS $Domain -OrgUnits $config.Tier1UsersPath -AddProtectedUsersGroup $T1ProtectedUsers -KerbAuthPolName $config.T1KerbAuthPolName
+        if ((Set-TierLevelIsolation -DomainDNS $Domain -OrgUnits $config.Tier1UsersPath -AddProtectedUsersGroup $T1ProtectedUsers -KerbAuthPolName $config.T1KerbAuthPolName)){
+            Write-Log -Message "Tier 1 user isolated" -Severity Debug -EventID 2012
+        } else {
+            Write-Log -Message "Tier 1 user isolation failed" -Severity Debug -EventID 2013
+        }
     }
     if ($config.PrivilegedGroupsCleanUp){
         foreach ($relativeSid in $PrivlegeDomainSid) {
-            Write-Host "service Accounts"
             validateAndRemoveUser -SID "$((Get-ADDomain -server $Domain).DomainSID)-$RelativeSid" -DomainDNSName $Domain -PrivilegedOU $config.Tier0UsersPath -ServiceAccountPath $config.Tier0ServiceAccountPath
         }
         #Backup Operators
