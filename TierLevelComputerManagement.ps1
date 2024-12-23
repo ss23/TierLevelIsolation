@@ -2,7 +2,7 @@
 Script Info
 
 Author: Andreas Lucas [MSFT]
-Download: https://github.com/Kili69/Tier0-User-Management
+Download: https://github.com/Kili69/TierLevelIsolation  
 
 Disclaimer:
 This sample script is not supported under any Microsoft standard support program or service. 
@@ -34,13 +34,13 @@ possibility of such damages
     All-Tiers   the computer group for Tier 0 and Tier1 will be managed
 .NOTES
     Version 20241220 
-        Initial Version 
+        Initial Version
+    Version[AL] 20241223
+        Documentation update
     
 
-        
-    The script creates a debug log in the user data app folder. This log file contains additional debug informations
+            The script creates a debug log in the user data app folder. This log file contains additional debug informations
     Important events are writte to the application log
-
 #>
 
 param(
@@ -123,13 +123,12 @@ function Write-Log {
 }
 <#
 .SYNOPSIS
-    detect unexpected computer object in the member list
+    Detect unexpected computer object in the member list of a group
 .DESCRIPTION
-    provide a list of computer distinguished names which are not localted in the correct OU or down level OU
+    This function will search for computer objects in the member list of a group that are not located in the 
+    expected OU's. The function will return a list of unexpected computer objects
 .OUTPUTS
     A array of unexpected computers
-.FUNCTIONALITY
-    search for unexpected computers
 .PARAMETER OUList
     A array of distunguished OU names
 .PARAMETER MemberDNList
@@ -141,7 +140,6 @@ function Write-Log {
     -MemberDNList @("CN=MyServer,OU=Computers,OU=Tier 0,OU=Admin,DC=fabrikam,DC=com")
     this will return CN=MyServer,OU=Computers,OU=Tier 0,OU=Admin,DC=fabrikam,DC=com as result
 #>
-
 function Get-UnexpectedComputerObjects{
     param(
         [Parameter(Mandatory = $true)]
@@ -152,6 +150,7 @@ function Get-UnexpectedComputerObjects{
         [string[]] $DomainDnsList
     )
     $UnexpectedComputer = @() #result array 
+    #The parameter OUList my contains the relative OU path. This array will be expanded to the full distinguished name
     $FQOuList = @() #list of all possible OU path
     foreach ($DomainRoot in $DomainDnsList){
         $DomainDN = (Get-ADDomain -Server $DomainRoot).DistinguishedName
@@ -160,15 +159,19 @@ function Get-UnexpectedComputerObjects{
             if ($OU -like "*$DomainDN") {$FQOuList += $OU}
         }
     }
+    #search for unexpected computer objects
     foreach ($Member in $MemberDNList ){
+        #extract the OU path from the computer object
         $MemberOU = [regex]::Match($Member,"CN=[^,]+,(.*)").Groups[1].Value
         $found = $false
+        #walk to all allowed OU's and check if the computer object is in one of the allowed OU's
         foreach ($OU in $FQOuList){
             if ($MemberOU -like "*$OU"){
                 $found = $true
                 break
             }
         }
+        #if the computer object is not in one of the allowed OU's add it to the result array
         if (!$found) { $UnexpectedComputer += $Member }
     }    
     return $UnexpectedComputer
@@ -180,13 +183,16 @@ function Get-UnexpectedComputerObjects{
 ##############################################################################################################################
 
 #region constantes
+#Is the current domain DNS name.
 $CurrentDomainDNS = (Get-ADDomain).DNSRoot
+#The default configuration file is located in the SYSVOL path of the current domain
 $DefaultConfigFile = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts\Tiering.config"
+#The default path to the configuration in the Active Directory configuration partition
 $ADconfigurationPath = "CN=Tier Level Isolation,CN=Services,$((Get-ADRootDSE).configurationNamingContext)"
 #endregion
 
 #script Version 
-$ScriptVersion = "0.2.20241220"
+$ScriptVersion = "0.2.20241223"
 #region Manage log file
 [int]$MaxLogFileSize = 1048576 #Maximum size of the log file
 $LogFile = "$($env:LOCALAPPDATA)\$($MyInvocation.MyCommand).log" #Name and path of the log file
@@ -200,11 +206,15 @@ if (Test-Path $LogFile) {
     }
 }
 #endregion
+#using the next closest global catalog server
 $GlobalCatalog = (Get-ADDomainController -Discover -Service GlobalCatalog -NextClosestSite ).HostName
 Write-Log -Message "Tier Isolation computer management $Scope version $ScriptVersion started. $($MyInvocation.Line)" -Severity Information -EventID 1000
 
 #region read configuration
 try{
+    #if the configuration file is not set, the script will search for the configuration in the Active Directory configuration partition or on the default path
+    #if the configuraiton is availab in the Active Directory configuration partition, the script will read the configuration from the AD
+    #otherwise try to use the default configuration file
     if ($ConfigFile -eq '') {
         if ($null -ne (Get-ADObject -Filter "DistinguishedName -eq '$ADconfigurationPath'")){
             Write-Log -Message "Read config from AD configuration partition" -Severity Debug -EventID 1002
@@ -237,6 +247,7 @@ if ($null -eq $scope ){
     $scope = $config.scope
 }
 #endregion
+#region validate the Tier computer groups exist. If not terminal the scirpt
 try {
     $Tier0ComputerGroup = Get-ADGroup -Filter "SamAccountName -eq '$($config.Tier0ComputerGroup)'" -Properties member
     if ($null -eq $Tier0ComputerGroup) {
@@ -256,9 +267,9 @@ catch [Microsoft.ActiveDirectory.Management.ADServerDownException] {
     Write-Log "The AD web service is not available" -Severity Error -EventID 1203
     exit 0x3E9
 }
-
-$GroupUpdateRequired = $false
-
+#endregion
+#region Add computer objects to the Tier 0 computer groups
+$GroupUpdateRequired = $false #The flag is set to true if a computer object is added to the group
 foreach ($Domain  in $config.Domains) {
     try{
         $DomainDN = (Get-ADDomain -Server $Domain).DistinguishedName  
@@ -342,7 +353,7 @@ foreach ($Domain  in $config.Domains) {
         Write-Log "The AD WebService is down or not reachable $domain $($error[0].InvocationInfo.ScriptLineNumber)" -Severity Error -EventID 1004
     }
 }
-
+# if the Tier 0 computer group is not empty, check if the computer objects are in the correct OU
 if ($Tier0ComputerGroup.member.Count -gt 0){
     $ComputerObjectToRemove = @()
     $ComputerObjectToRemove = Get-UnexpectedComputerObjects -OUList $config.Tier0ComputerPath -MemberDNList $Tier0ComputerGroup.member -DomainDNSList $config.Domains
@@ -352,6 +363,7 @@ if ($Tier0ComputerGroup.member.Count -gt 0){
         Remove-ADGroupMember -Identity $Tier0ComputerGroup -Members $DelComputer -Confirm:$false
     }
 }
+#if the scope is not Tier-0 and the Tier 1 computer group is not empty, check if the computer objects are in the correct OU
 if (($scope -ne "Tier-0") -and ($Tier1ComputerGroup.member.count -gt 1)){
     $ComputerObjectToRemove = Get-UnexpectedComputerObjects -OUList $config.Tier1ComputerPath -MemberDNList $Tier1ComputerGroup.member -DomainDNSList $config.Domains
     Foreach ($DelComputerDN in $ComputerObjectToRemove){ 

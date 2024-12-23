@@ -2,7 +2,7 @@
 Script Info
 
 Author: Andreas Lucas [MSFT]
-Download: https://github.com/Kili69/Tier0-User-Management
+Download: https://github.com/Kili69/TierLevelIsolation
 
 Disclaimer:
 This sample script is not supported under any Microsoft standard support program or service. 
@@ -16,11 +16,10 @@ interruption, loss of business information, or other pecuniary loss) arising out
 inability to use the sample scripts or documentation, even if Microsoft has been advised of the 
 possibility of such damages
 .Synopsis
-    Managing of Tier 0 and Tier 1 computer groups
+    Managing of Tier 0 and Tier 1 user groups
 
 .DESCRIPTION
-    This script add or remove computer objects if they are not located in specific Tier 0 or Tier 1 
-    computer OU.
+    This script applies the Kerberos Authentication Policy to the users in the Tier 0 and Tier 1 user groups and adds them to the protected users group.
     The script allows multiple OU's for Tier 0 / 1
 .OUTPUTS 
     The script does not produce any direct outputs.
@@ -37,7 +36,8 @@ possibility of such damages
     Version 0.2.20241220
         If a user is removed from a privileged group, the adminCount attribute will be removed from the user
         The script will check if the user is located in a service account OU. If the user is located in a service account OU, the user will not be removed from the privileged group
-        
+    Version 20241223
+        documentaiton update  
 
     All events written to the log file. Information, Warnings and error events are written to the eventlog
     All event IDs documented in EventID.md
@@ -335,14 +335,16 @@ function ConvertTo-DistinguishedNames{
 # Main program starts here
 ##############################################################################################################################
 #script Version 
-$ScriptVersion = "0.2.20241220"
+$ScriptVersion = "20241223"
 
 #region constantes
 $config = $null
+#the current domain must contains the Tier level user groups
 $CurrentDomainDNS = (Get-ADDomain).DNSRoot
 $DefaultConfigFile = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts\Tiering.config"
 $ADconfigurationPath = "CN=Tier Level Isolation,CN=Services,$((Get-ADRootDSE).configurationNamingContext)"
 
+# relative SID of privileged groups
 $PrivlegeDomainSid = @(
     "512", #Domain Admins
     "520", #Group Policy Creator Owner
@@ -432,6 +434,7 @@ switch ($config.ProtectedUsers) {
 }
 
 foreach ($Domain in $config.Domains){
+    #region Tier 0 users
     if ($scope -ne "Tier-1"){
         if ((Set-TierLevelIsolation -DomainDNS $Domain -OrgUnits $config.Tier0UsersPath -AddProtectedUsersGroup $T0ProtectedUsers -KerbAuthPolName $config.T0KerbAuthPolName)){
             Write-Log -Message "Tier 0 user isolated" -Severity Debug -EventID 2010
@@ -439,6 +442,8 @@ foreach ($Domain in $config.Domains){
             Write-Log -Message "Tier 0 user isolation failed" -Severity Debug -EventID 2011
         }
     } 
+    #endregion
+    #region Tier 1 users
     if ($scope -ne "Tier-0") {
         if ((Set-TierLevelIsolation -DomainDNS $Domain -OrgUnits $config.Tier1UsersPath -AddProtectedUsersGroup $T1ProtectedUsers -KerbAuthPolName $config.T1KerbAuthPolName)){
             Write-Log -Message "Tier 1 user isolated" -Severity Debug -EventID 2012
@@ -446,9 +451,12 @@ foreach ($Domain in $config.Domains){
             Write-Log -Message "Tier 1 user isolation failed" -Severity Debug -EventID 2013
         }
     }
+    #endregion
+    #if the PrivilegedGroupsCleanUp is set to true, the script will remove all users from the privileged groups
     if ($config.PrivilegedGroupsCleanUp){
+        $DomainSID = (Get-ADDomain -server $Domain).DomainSID
         foreach ($relativeSid in $PrivlegeDomainSid) {
-            validateAndRemoveUser -SID "$((Get-ADDomain -server $Domain).DomainSID)-$RelativeSid" -DomainDNSName $Domain -PrivilegedOU $config.Tier0UsersPath -ServiceAccountPath $config.Tier0ServiceAccountPath
+            validateAndRemoveUser -SID "$DomainSID-$RelativeSid" -DomainDNSName $Domain -PrivilegedOU $config.Tier0UsersPath -ServiceAccountPath $config.Tier0ServiceAccountPath
         }
         #Backup Operators
         validateAndRemoveUser -SID "S-1-5-32-551" -DomainDNSName $Domain -PrivilegedOU $config.Tier0UsersPath -ServiceAccountPath $config.Tier0ServiceAccountPath

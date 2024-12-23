@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScheduledTasks clsid="{CC63F200-7309-4ba0-B154-A71CD118DBCC}">
-	<TaskV2 clsid="{D8896631-B747-47a7-84A6-C155337F3BC8}" name="Tier 0 Computer Management" image="2" changed="2024-12-06 14:29:17" uid="{B1168190-7E2C-4177-9391-B1FFBCDF4774}">
+	<TaskV2 clsid="{D8896631-B747-47a7-84A6-C155337F3BC8}" name="Tier 0 Computer Management" image="2" changed="2024-12-23 14:29:17" uid="{B1168190-7E2C-4177-9391-B1FFBCDF4774}">
 		<Properties action="U" name="Tier 0 Computer Management" runAs="NT AUTHORITY\System" logonType="S4U">
 			<Task version="1.2">
 				<RegistrationInfo>
@@ -260,8 +260,7 @@
 			<Actions Context="Author">
 				<Exec>
 					<Command>powershell.exe</Command>
-					<Arguments>"`$principal = New-ScheduledTaskPrincipal -LogonType Password -UserId '#GmsaName`$';Set-ScheduledTask 'Tier 0 User Management' -Principal `$principal;Set-ScheduledTask 'Tier 1 User Management' -Principal `$principal"</Arguments>
-				</Exec>
+					<Arguments>"$principal = New-ScheduledTaskPrincipal -LogonType Password -UserId '#GmsaName';Set-ScheduledTask 'Tier 0 User Management' -Principal $principal;Set-ScheduledTask 'Tier 1 User Management' -Principal $principal"</Arguments>				</Exec>
 			</Actions>
 			</Task>
 		</Properties>
