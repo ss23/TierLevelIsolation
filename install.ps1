@@ -25,6 +25,8 @@ possibility of such damages
 .NOTES
     Version 0.2.20241206
         Initial Version
+    Version 0.2.20250103
+        Typo correction
 #>
 
 <# Function create the entire OU path of the relative distinuished name without the domain component. This function
@@ -614,8 +616,9 @@ try {
     $LinkedTieringGP = (Get-GPInheritance -Target (Get-ADDomain).DomainControllersContainer).GpoLinks | Where-Object {$_.GpoId -eq "$($oGPO.ID)"}
     if ($Null -eq $LinkedTieringGP){
         $oGPO | New-GPLink -Target (Get-ADDomain).DomainControllersContainer -LinkEnabled Yes
-        Write-Host "Tier Level User Management Group Policy is linked to Domain Controllers OU" -ForegroundColor Yellow -BackgroundColor Blue
-        Write-Host "DO not forget to enabled Tier 0 user management task" -ForegroundColor Yellow
+        Write-Host "Tier Level Isolation Group Policy is linked to Domain Controllers OU" -ForegroundColor Yellow -BackgroundColor Blue
+        Write-Host "Do not forget to enable Tier 0 user management task" -ForegroundColor Yellow
+        Write-Host "ONCE all Tier 0 Computers are members of the $($config.Tier0ComputerGroup) group AND have been rebooted you are ready to enable the 'Tier 0 User Management' Scheduled Task. Also, be sure to have a proper Breakglass account and process in place."
     } else {
         if (!$LinkedTieringGP.Enabled){
             Write-Host "The Tiering group policy is linked to $((Get-ADDomain).DomainControllersContainer) but not enabled" -ForegroundColor Yellow

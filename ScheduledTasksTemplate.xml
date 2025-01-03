@@ -112,7 +112,7 @@
 		<Properties action="U" name="Tier 0 User Management" runAs="NT AUTHORITY\System" logonType="S4U">
 			<Task version="1.2">
 			<RegistrationInfo>
-				<Author>BLOEDGELABER\bgadmin</Author>
+				<Author>Tiering\Administrator</Author>
 				<Description>Manage Tier 0 users</Description>
 			</RegistrationInfo>
 				<Principals>
@@ -167,7 +167,7 @@
 	<Properties action="U" name="Tier 1 User Management" runAs="NT AUTHORITY\System" logonType="S4U">
 	<Task version="1.2">
 		<RegistrationInfo>
-			<Author>BLOEDGELABER\bgadmin</Author>
+			<Author>Tiering\Administrator</Author>
 			<Description>Manage Tier 1 computer</Description>
 		</RegistrationInfo>
 		<Principals>
