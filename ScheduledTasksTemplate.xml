@@ -164,61 +164,61 @@
 		</Properties>
 	</TaskV2>
 	<TaskV2 clsid="{D8896631-B747-47a7-84A6-C155337F3BC8}" name="Tier 1 User Management" image="2" changed="2024-12-06 14:28:43" uid="{1CD57939-879D-44F9-A38F-7C140A58F041}">
-	<Properties action="U" name="Tier 1 User Management" runAs="NT AUTHORITY\System" logonType="S4U">
-	<Task version="1.2">
-		<RegistrationInfo>
-			<Author>Tiering\Administrator</Author>
-			<Description>Manage Tier 1 computer</Description>
-		</RegistrationInfo>
-		<Principals>
-			<Principal id="Author">
-				<UserId>NT AUTHORITY\System</UserId>
-				<LogonType>S4U</LogonType>
-				<RunLevel>LeastPrivilege</RunLevel>
-			</Principal>
-		</Principals>
-		<Settings>
-			<IdleSettings>
-				<Duration>PT10M</Duration>
-				<WaitTimeout>PT1H</WaitTimeout>
-				<StopOnIdleEnd>true</StopOnIdleEnd>
-				<RestartOnIdle>false</RestartOnIdle>
-			</IdleSettings>
-			<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-			<DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>
-			<StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>
-			<AllowHardTerminate>false</AllowHardTerminate>
-			<RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
-			<AllowStartOnDemand>true</AllowStartOnDemand>
-			<Enabled>false</Enabled>
-			<Hidden>false</Hidden>
-			<RunOnlyIfIdle>false</RunOnlyIfIdle>
-			<WakeToRun>false</WakeToRun>
-			<ExecutionTimeLimit>PT1H</ExecutionTimeLimit>
-			<Priority>7</Priority>
-		</Settings>
-		<Triggers>
-			<CalendarTrigger>
-				<StartBoundary>2024-12-06T12:05:00</StartBoundary>
-				<Enabled>true</Enabled>
-				<ScheduleByDay>
-					
-				</ScheduleByDay>
-				<Repetition>
-					<Interval>PT10M</Interval>
-					<Duration>P1D</Duration>
-					<StopAtDurationEnd>false</StopAtDurationEnd>
-				</Repetition>
-			</CalendarTrigger>
-		</Triggers>
-		<Actions Context="Author">
-			<Exec>
-				<Command>powershell.exe</Command>
-				<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelUserManagement.ps1" -Scope 'Tier-1'</Arguments>
-			</Exec>
-		</Actions>
-	</Task>
-	</Properties>
+		<Properties action="U" name="Tier 1 User Management" runAs="NT AUTHORITY\System" logonType="S4U">
+			<Task version="1.2">
+				<RegistrationInfo>
+					<Author>Tiering\Administrator</Author>
+					<Description>Manage Tier 1 computer</Description>
+				</RegistrationInfo>
+				<Principals>
+					<Principal id="Author">
+						<UserId>NT AUTHORITY\System</UserId>
+						<LogonType>S4U</LogonType>
+						<RunLevel>LeastPrivilege</RunLevel>
+					</Principal>
+				</Principals>
+				<Settings>
+					<IdleSettings>
+						<Duration>PT10M</Duration>
+						<WaitTimeout>PT1H</WaitTimeout>
+						<StopOnIdleEnd>true</StopOnIdleEnd>
+						<RestartOnIdle>false</RestartOnIdle>
+					</IdleSettings>
+					<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+					<DisallowStartIfOnBatteries>true</DisallowStartIfOnBatteries>
+					<StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>
+					<AllowHardTerminate>false</AllowHardTerminate>
+					<RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+					<AllowStartOnDemand>true</AllowStartOnDemand>
+					<Enabled>false</Enabled>
+					<Hidden>false</Hidden>
+					<RunOnlyIfIdle>false</RunOnlyIfIdle>
+					<WakeToRun>false</WakeToRun>
+					<ExecutionTimeLimit>PT1H</ExecutionTimeLimit>
+					<Priority>7</Priority>
+				</Settings>
+				<Triggers>
+					<CalendarTrigger>
+						<StartBoundary>2024-12-06T12:05:00</StartBoundary>
+						<Enabled>true</Enabled>
+						<ScheduleByDay>
+							<DaysInterval>1</DaysInterval>
+						</ScheduleByDay>
+						<Repetition>
+							<Interval>PT10M</Interval>
+							<Duration>P1D</Duration>
+							<StopAtDurationEnd>false</StopAtDurationEnd>
+						</Repetition>
+					</CalendarTrigger>
+				</Triggers>
+				<Actions Context="Author">
+					<Exec>
+						<Command>powershell.exe</Command>
+						<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelUserManagement.ps1" -Scope 'Tier-1'</Arguments>
+					</Exec>
+				</Actions>
+			</Task>
+		</Properties>
 	</TaskV2>
 	<TaskV2 clsid="{D8896631-B747-47a7-84A6-C155337F3BC8}" name="Change User context" image="2" changed="2024-12-06 15:25:17" uid="{BCB5982B-9E75-4A3B-8E10-C83565DFFCE4}">
 		<Properties action="U" name="Change User context" runAs="NT AUTHORITY\System" logonType="S4U">

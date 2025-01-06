@@ -27,6 +27,11 @@ possibility of such damages
         Initial Version
     Version 0.2.20250103
         Typo correction
+    Version 0.2.20250106
+        Rename groups from tier X computer to tier X server
+        The name of the tier 1 server can now be changed
+        OU Tier X users renamed to Tier x admins
+        Display the GP name now based on the variable $GPOName
 #>
 
 <# Function create the entire OU path of the relative distinuished name without the domain component. This function
@@ -196,8 +201,8 @@ $DescriptionTier1CKerberosAuthenticationPolicy = "..."
 $DefaultT0KerbAuthPolName = "Tier 0 restriction"
 $DefaultT1KerbAuthPolName = "Tier 1 restriction"
 #Default path of the Tier Level users OU
-$DefaultT0Users = "OU=User,OU=Tier 0,OU=Admin"
-$DefaultT1Users = "OU=User,OU=Tier 1,OU=Admin"
+$DefaultT0Users = "OU=Admins,OU=Tier 0,OU=Admin"
+$DefaultT1Users = "OU=Admins,OU=Tier 1,OU=Admin"
 #Default path of the Tier Level users OU
 $DefaultT0Computers          =        "OU=Computers,OU=Tier 0,OU=Admin"
 $DefaultT0ServiceAccountPath = "OU=Service Accounts,OU=Tier 0,OU=Admin"
@@ -205,8 +210,8 @@ $DefaultT1Computers          =        "OU=Computers,OU=Tier 1,OU=Admin"
 
 
 #Default name of the Claim groups
-$DefaultT0ComputerGroupName = "Tier 0 Computers"
-$DefaultT1ComputerGroupName = "Tier 1 Computers"
+$DefaultT0ComputerGroupName = "Tier 0 server"
+$DefaultT1ComputerGroupName = "Tier 1 server"
 $DefaultTGTLifeTime = 240
 #Default Name of the Group Managed Service account 
 $DefaultGMSAName = "TierLevel-mgmt"
@@ -341,11 +346,11 @@ if (($scope -eq "Tier-0") -or ( $scope -eq "All-Tiers") ){
         $strReadHost = Read-Host "Do you want to add another Tier 0 service account OU (y/[n])"
     } while ($strReadHost -like "y*")
     do {
-        $strReadHost = Read-Host "Distinguishedname of the Tier 0 computer OU ($defaultT0Computers)"
+        $strReadHost = Read-Host "Distinguishedname of the Tier 0 server OU ($defaultT0Computers)"
         if ($strReadHost -eq '') {$strReadHost = $DefaultT0Computers}
         if ($config.Tier0ComputerPath -notcontains $strReadHost){
             $config.Tier0ComputerPath += $strReadHost
-            $strReadHost = Read-Host "Do you want to add another Tier 0 computer OU (y/[n])"
+            $strReadHost = Read-Host "Do you want to add another Tier 0 server OU (y/[n])"
         } 
     }while ($strReadHost -like "y*")
     $strReadHost = Read-Host "Provide the Tier 0 Kerberos Authentication policy name ($DefaultT0KerbAuthPolName)"
@@ -353,12 +358,15 @@ if (($scope -eq "Tier-0") -or ( $scope -eq "All-Tiers") ){
     $config.T0KerbAuthPolName = $strReadHost
 
 }
-$strReadHost = Read-Host "Provide the Tier 0 Computer Group name ($DefaultT0ComputerGroupName)"
+$strReadHost = Read-Host "Provide the Tier 0 server samaccount group name ($DefaultT0ComputerGroupName)"
 if ($strReadHost -eq ''){$strReadHost = $DefaultT0ComputerGroupName}
 $config.Tier0ComputerGroup = $strReadHost
 
 if (($scope -eq "Tier-1") -or ( $scope -eq "All-Tiers")){
     Write-Host "Tier 1 isolation paramter "
+    $strReadHost = Read-Host "Provide the Tier 1 server samaccount group name ($DefaultT1ComputerGroupName)"
+    if ($strReadHost -eq ''){$strReadHost = $DefaultT1ComputerGroupName}
+    $config.Tier1ComputerGroup = $strReadHost
     do {
         $strReadHost = Read-Host "Distinguishedname of the Tier 1 user OU ($DefaultT1Users)"
         if ($strReadHost -eq '') {$strReadHost = $DefaultT1Users}
@@ -368,11 +376,11 @@ if (($scope -eq "Tier-1") -or ( $scope -eq "All-Tiers")){
         $strReadHost = Read-Host "Do you want to add another Tier 1 user OU (y/[n])"
     } while ($strReadHost -like "y*")
     do {
-        $strReadHost = Read-Host "Distinguishedname of the Tier 1 computer OU ($DefaultT1Computers)"
+        $strReadHost = Read-Host "Distinguishedname of the Tier 1 server OU ($DefaultT1Computers)"
         if ($strReadHost -eq '') {$strReadHost = $DefaultT1Computers}
         if ($config.Tier1ComputerPath -notcontains $strReadHost){
             $config.Tier1ComputerPath += $strReadHost
-            $strReadHost = Read-Host "Do you want to add another Tier 0 computer OU (y/[n])"
+            $strReadHost = Read-Host "Do you want to add another Tier 0 server OU (y/[n])"
         } 
     }while ($strReadHost -like "y*")
     $strReadHost = Read-Host "Provide the Tier 1 Kerberos Authentication policy name ($DefaultT1KerbAuthPolName)"
@@ -459,7 +467,7 @@ foreach ($domain in $config.Domains){
     }
 }
 #endregion
-#Tier 0 computers group is needed in any scope
+#Tier 0 server group is needed in any scope
 $Tier0ComputerGroup = Get-ADGroup -Filter "SamAccountName -eq '$($config.Tier0ComputerGroup)'"
 $Tier1ComputerGroup = Get-ADGroup -Filter "SamAccountName -eq '$($config.Tier1ComputerGroup)'" 
 if ($Null -eq $Tier0ComputerGroup ){
@@ -474,7 +482,7 @@ if (($scope -eq "Tier-0") -or ($scope -eq "All-Tiers")){
             Write-Host "Kerberos Authentication Policy $($config.T0KerbAuthPolName)) already exists. Please validate the policy manual" -ForegroundColor Yellow
         } else {
             #create a Kerberos authentication policy, wher assinged users can logon to members of enterprise domain controllers
-            #or member of the Tier 0 computers group
+            #or member of the Tier 0 server group
             $AllowToAutenticateFromSDDL = "O:SYG:SYD:(XA;OICI;CR;;;WD;((Member_of {SID(ED)}) || (Member_of_any {SID($($Tier0ComputerGroup.SID))})))"
             New-ADAuthenticationPolicy -Name $config.T0KerbAuthPolName`
                                        -Enforce `
@@ -503,7 +511,7 @@ if (($scope -eq "Tier-1") -or ($scope -eq "All-Tiers")){
             Write-Host "Kerberos Authentication Policy $($config.T1KerbAuthPolName)) already exists. Please validate the policy manual" -ForegroundColor Yellow
         } else {
             #create a Kerberos authentication policy, wher assinged users can logon to members of enterprise domain controllers
-            #or member of the Tier 0 computers group
+            #or member of the Tier 0 server group
             $AllowToAutenticateFromSDDL = "O:SYG:SYD:(XA;OICI;CR;;;WD;(((Member_of {SID(ED)}) || (Member_of_any {SID($($Tier0ComputerGroup.SID))})) || (Member_of_any {SID($($Tier1ComputerGroup.SID))})))"
             New-ADAuthenticationPolicy -Name $config.T1KerbAuthPolName `
                                        -Enforce `
@@ -592,7 +600,7 @@ try {
     }
     switch ($scope){
         "Tier-1"{
-            #Remove the Tier 0 computer and user management tasks
+            #Remove the Tier 0 server and user management tasks
             "Remove Tier 0 tasks"
             $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{B1168190-7E2C-4177-9391-B1FFBCDF4774}'}
             $task.ParentNode.RemoveChild($Task) | Out-Null
@@ -616,12 +624,12 @@ try {
     $LinkedTieringGP = (Get-GPInheritance -Target (Get-ADDomain).DomainControllersContainer).GpoLinks | Where-Object {$_.GpoId -eq "$($oGPO.ID)"}
     if ($Null -eq $LinkedTieringGP){
         $oGPO | New-GPLink -Target (Get-ADDomain).DomainControllersContainer -LinkEnabled Yes
-        Write-Host "Tier Level Isolation Group Policy is linked to Domain Controllers OU" -ForegroundColor Yellow -BackgroundColor Blue
+        Write-Host "$GPOName Group Policy is linked to Domain Controllers OU" -ForegroundColor Yellow -BackgroundColor Blue
         Write-Host "Do not forget to enable Tier 0 user management task" -ForegroundColor Yellow
-        Write-Host "ONCE all Tier 0 Computers are members of the $($config.Tier0ComputerGroup) group AND have been rebooted you are ready to enable the 'Tier 0 User Management' Scheduled Task. Also, be sure to have a proper Breakglass account and process in place."
+        Write-Host "ONCE all Tier 0 server are members of the $($config.Tier0ComputerGroup) group AND have been rebooted you are ready to enable the 'Tier 0 User Management' Scheduled Task. Also, be sure to have a proper Breakglass account and process in place."
     } else {
         if (!$LinkedTieringGP.Enabled){
-            Write-Host "The Tiering group policy is linked to $((Get-ADDomain).DomainControllersContainer) but not enabled" -ForegroundColor Yellow
+            Write-Host "$GPOName group policy is linked to $((Get-ADDomain).DomainControllersContainer) but not enabled" -ForegroundColor Yellow
             Write-Host "Validate the status for the Schedule tasks before you enbaled the group policy link" -ForegroundColor Yellow
         }
     }
