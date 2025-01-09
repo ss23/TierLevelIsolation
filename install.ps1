@@ -32,6 +32,11 @@ possibility of such damages
         The name of the tier 1 server can now be changed
         OU Tier X users renamed to Tier x admins
         Display the GP name now based on the variable $GPOName
+    Version 0.2.20250109
+        The required groups will be created on the next closest global catalog server
+        The script will wait 10 seconds if the computer group is not visible in the forest
+        IF the group cannot be created the script will be aborted
+        
 #>
 
 <# Function create the entire OU path of the relative distinuished name without the domain component. This function
@@ -184,6 +189,7 @@ function IsMemberOfEnterpriseAdmins{
 #The current domain contains the relevant Tier level groups
 $CurrentDomainDNS = (Get-ADDomain).DNSRoot
 $CurrentDomainDN  = (Get-ADDomain).DistinguishedName
+$CurrentDC        = (Get-ADDomainController -Discover -Service GlobalCatalog -NextClosestSite ).Name
 
 #This Description will be added to the Tier 0 / Tier 1 Commputers group if it will be created during this setup. This Description can't be changed during the setup. 
 #But i can be changed after the setup
@@ -469,13 +475,57 @@ foreach ($domain in $config.Domains){
 #endregion
 #Tier 0 server group is needed in any scope
 $Tier0ComputerGroup = Get-ADGroup -Filter "SamAccountName -eq '$($config.Tier0ComputerGroup)'"
-$Tier1ComputerGroup = Get-ADGroup -Filter "SamAccountName -eq '$($config.Tier1ComputerGroup)'" 
-if ($Null -eq $Tier0ComputerGroup ){
-    $Tier0ComputerGroup = New-ADGroup -Name $config.Tier0ComputerGroup -GroupScope Universal -Description $DescriptionT0ComputerGroup
+$Tier1ComputerGroup = Get-ADGroup -Filter "SamAccountName -eq '$($config.Tier1ComputerGroup)'"
+$GroupWaitCounter = 0 #If the universal group is create via a DC who is not a GC, the group is not visible in the forest until the GC is replicated
+try {
+    if ($Null -eq $Tier0ComputerGroup ){
+        $Tier0ComputerGroup = New-ADGroup -Name $config.Tier0ComputerGroup -GroupScope Universal -Description $DescriptionT0ComputerGroup -Server $CurrentDC
+        while (($Null -eq $Tier0ComputerGroup) -and ($GroupWaitCounter -lt 10)){
+            Write-Host "The group $($config.Tier0ComputerGroup) is not visible in the forest. Waiting for 10 seconds" -ForegroundColor Yellow   
+            Start-Sleep -Seconds 10
+            $Tier0ComputerGroup = Get-ADGroup -Identity $config.Tier0ComputerGroup -Server $CurrentDC
+        }
+        if ($Null -eq $Tier0ComputerGroup){
+            Write-Host "Can't create the group $($config.Tier0ComputerGroup). Script aborted" -ForegroundColor Red
+            Write-Host "script aborted" -ForegroundColor Red
+            return
+        } else {
+            $GroupWaitCounter = 0
+        }
+    }
+    if (($null -eq $Tier1ComputerGroup ) -and (($scope -eq "Tier-1") -or ($scope -eq "All-Tiers"))){
+        $Tier1ComputerGroup = New-ADGroup -Name $config.Tier1ComputerGroup -GroupScope Universal -Description $DescriptionT1ComputerGroup -Server $CurrentDC
+        while (($Null -eq $Tier1ComputerGroup) -and ($GroupWaitCounter -lt 10)){
+            Write-Host "The group $($config.Tier1ComputerGroup) is not visible in the forest. Waiting for 10 seconds" -ForegroundColor Yellow   
+            Start-Sleep -Seconds 10
+            $Tier1ComputerGroup = Get-ADGroup -Identity $config.Tier1ComputerGroup -Server $CurrentDC
+        }
+        if ($null -eq $Tier1ComputerGroup){
+            Write-Host "Can't create the group $($config.Tier1ComputerGroup). Script aborted" -ForegroundColor Red
+            Write-Host "script aborted" -ForegroundColor Red
+            return
+        }
+    }
 }
-if (($null -eq $Tier1ComputerGroup ) -and (($scope -eq "Tier-1") -or ($scope -eq "All-Tiers"))){
-    $Tier1ComputerGroup = New-ADGroup -Name $config.Tier1ComputerGroup -GroupScope Universal -Description $DescriptionT1ComputerGroup
+catch [System.UnauthorizedAccessException]{
+    Write-Host "Administrator Privileges required to create the Tier 0 / Tier 1 server group" -ForegroundColor Red
+    Write-Host $($Error[0].Exception.Message) -ForegroundColor Red
+    Write-Host "script aborted" -ForegroundColor Red
+    return
 }
+catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException]{
+    Write-Host "Can't find group $($Error[0].CategoryInfo.TargetName). Script aborted" -ForegroundColor Red 
+    Write-Host "script aborted" -ForegroundColor Red
+    return
+}
+catch {
+    Write-Host "An unexpected error has occured. Script aborted" -ForegroundColor Red
+    Write-Host $($Error[0].Exception.Message) -ForegroundColor Red
+    Write-Host "script aborted" -ForegroundColor Red
+    return
+}
+
+#Create the Kerberos Authentication Policy if required
 if (($scope -eq "Tier-0") -or ($scope -eq "All-Tiers")){
     try {
         if ([bool](Get-ADAuthenticationPolicy -Filter "Name -eq '$($config.T0KerbAuthPolName)'")){
