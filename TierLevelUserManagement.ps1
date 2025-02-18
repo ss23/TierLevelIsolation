@@ -21,6 +21,8 @@ possibility of such damages
 .DESCRIPTION
     This script applies the Kerberos Authentication Policy to the users in the Tier 0 and Tier 1 user groups and adds them to the protected users group.
     The script allows multiple OU's for Tier 0 / 1
+    If configured, the script will remove unexpected users from the privileged groups and add users to the protected users group. This can be enabled or disabled
+    in the configuration file.
 .OUTPUTS 
     The script does not produce any direct outputs.
 .PARAMETER ConfigFile
@@ -38,6 +40,8 @@ possibility of such damages
         The script will check if the user is located in a service account OU. If the user is located in a service account OU, the user will not be removed from the privileged group
     Version 20241223
         documentaiton update  
+    Version 0.2.20240218
+        Documentation update
 
     All events written to the log file. Information, Warnings and error events are written to the eventlog
     All event IDs documented in EventID.md
@@ -335,7 +339,7 @@ function ConvertTo-DistinguishedNames{
 # Main program starts here
 ##############################################################################################################################
 #script Version 
-$ScriptVersion = "20241223"
+$ScriptVersion = "0.2.20250218"
 
 #region constantes
 $config = $null
