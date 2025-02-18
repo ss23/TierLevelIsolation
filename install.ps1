@@ -19,7 +19,8 @@ possibility of such damages
     Automated installation of Active Directory Tier Level isolation 
 
 .DESCRIPTION
-    This script installes the Kerberos Tier Level isolation
+    This script installes the Kerberos Tier Level isolation solution. It will create OU's group managed 
+    servcie accounts
 .OUTPUTS 
     None
 .NOTES
@@ -36,6 +37,11 @@ possibility of such damages
         The required groups will be created on the next closest global catalog server
         The script will wait 10 seconds if the computer group is not visible in the forest
         IF the group cannot be created the script will be aborted
+    Version 0.2.20250217
+        The installation script aborts if the required OU cannot be created
+        More detailed error message
+    Version 0.2.20250218
+        Update text messages
         
 #>
 
@@ -60,7 +66,7 @@ is required to provide the same OU structure in the entrie forest
         If at least one OU cannot created. It the user has not the required rights, the function will also return $false 
 #>
 function New-TierLevelOU {
-    [CmdletBinding ( SupportsShouldProcess)]
+    [cmdletBinding()]
     param (
         [Parameter(Mandatory)]
         [string]$OUPath,
@@ -106,8 +112,8 @@ function New-TierLevelOU {
         Return $false
     } 
     catch {
-        Write-Host "A error occured while create OU Structure"
-        Write-Host $Error[0].CategoryInfo.GetType()
+        Write-Host "A error occured while create OU Structure $OUPath" -ForegroundColor Red
+        Write-Host $Error[0].Exception.Message -ForegroundColor Red
         Return $false
     }
     Return $true
@@ -186,6 +192,7 @@ function IsMemberOfEnterpriseAdmins{
 #####################################################################################################################################################################################
 #region  Constanst and default value
 #####################################################################################################################################################################################
+$ScriptVersion = "0.2.20250218"
 #The current domain contains the relevant Tier level groups
 $CurrentDomainDNS = (Get-ADDomain).DNSRoot
 $CurrentDomainDN  = (Get-ADDomain).DistinguishedName
@@ -271,6 +278,7 @@ $config | Add-Member -MemberType NoteProperty -Name PrivilegedGroupsCleanUp -Val
 
 #This script requires the Active Director and Group Policy Powershell Module. The script terminal if one
 #of the module is missing
+Write-Host "Tier 0 / Tier 1 isolation setup script ($ScriptVersion)" -ForegroundColor Green
 try{
     Import-Module ActiveDirectory
     Import-Module GroupPolicy  
@@ -295,7 +303,7 @@ if (((Get-ADForest).Domains.count -eq 1) -or ($SingleDomain)){
     $SingleDomain = $true
     $config.Domains += $CurrentDomainDNS
 } else {
-    $strReadHost = Read-Host "Do you want to enable the mulit-forest mode ([y]es / No)"
+    $strReadHost = Read-Host "Do you want to enable the mulit-domain-forest mode ([y]es / No)"
     if (($strReadHost -eq '') -or ($strReadHost -like "y*")){
         $SingleDomain = $false
         Write-Host "Forest Mode is enabled"
@@ -317,7 +325,7 @@ if (((Get-ADForest).Domains.count -eq 1) -or ($SingleDomain)){
 }
 
 
-#Define Tier  Paramters
+#Define Tier  Parameters
 Write-Host "Scope-Level:"
 Write-Host "[0] Tier-0"
 Write-Host "[1] Tier-1"
@@ -334,9 +342,9 @@ do{
 }while ($scope -eq '')
 $config.scope = $scope
 if (($scope -eq "Tier-0") -or ( $scope -eq "All-Tiers") ){
-    Write-Host "Tier 0 isolation paramter "
+    Write-Host "Tier 0 isolation parameter "
     do {
-        $strReadHost = Read-Host "Distinguishedname of the Tier 0 user OU ($DefaultT0Users)"
+        $strReadHost = Read-Host "Distinguishedname of the Tier 0 Admin OU ($DefaultT0Users)"
         if ($strReadHost -eq '') {$strReadHost = $DefaultT0Users}
         if ($config.Tier0UsersPath -notcontains $strReadHost){
             $config.Tier0UsersPath += $strReadHost
@@ -369,12 +377,12 @@ if ($strReadHost -eq ''){$strReadHost = $DefaultT0ComputerGroupName}
 $config.Tier0ComputerGroup = $strReadHost
 
 if (($scope -eq "Tier-1") -or ( $scope -eq "All-Tiers")){
-    Write-Host "Tier 1 isolation paramter "
+    Write-Host "Tier 1 isolation parameter "
     $strReadHost = Read-Host "Provide the Tier 1 server samaccount group name ($DefaultT1ComputerGroupName)"
     if ($strReadHost -eq ''){$strReadHost = $DefaultT1ComputerGroupName}
     $config.Tier1ComputerGroup = $strReadHost
     do {
-        $strReadHost = Read-Host "Distinguishedname of the Tier 1 user OU ($DefaultT1Users)"
+        $strReadHost = Read-Host "Distinguishedname of the Tier 1 Admin OU ($DefaultT1Users)"
         if ($strReadHost -eq '') {$strReadHost = $DefaultT1Users}
         if ($config.Tier1UsersPath -notcontains $strReadHost){
             $config.Tier1UsersPath += $strReadHost
@@ -405,7 +413,7 @@ switch ($strReadHost) {
     "2" { $config.ProtectedUsers = @("Tier-0","Tier-1")}
     Default { $config.ProtectedUsers = @()}
 }
-$strReadHost = "Enable privileged group cleanup [Y/N] (y)"
+$strReadHost = Read-Host "Enable privileged group cleanup [Y/N] (y)"
 if ($strReadHost -like "n*"){
     $config.PrivilegedGroupsCleanUp = $false
 } else {
@@ -419,28 +427,52 @@ foreach ($domain in $config.Domains){
     foreach ($OU in $config.Tier0ComputerPath){
         if ($OU -like "*DC=*"){
             if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
-                New-TierLevelOU -OUPath "$OU" -DomainDNS $domain |Out-Null
+                if (!(New-TierLevelOU -OUPath "$OU" -DomainDNS $domain |Out-Null)){
+                    Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
+                    Write-Host "script aborted" -ForegroundColor Red
+                    return
+                }
             }
         } else {
-            New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain | Out-Null
+            if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain | Out-Null)){
+                Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
+                Write-Host "script aborted" -ForegroundColor Red
+                return
+            }
         }
     }
     foreach ($OU in $config.Tier0UsersPath){
         if ($OU -like "*DC=*"){
             if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
-                New-TierLevelOU -OUPath "$OU" -DomainDNS $domain |Out-Null
+                if (!(New-TierLevelOU -OUPath "$OU" -DomainDNS $domain |Out-Null)){
+                    Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
+                    Write-Host "script aborted" -ForegroundColor Red
+                    return
+                }
             }
         } else {
-            New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain | Out-Null
+            if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain | Out-Null)){
+                Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
+                Write-Host "script aborted" -ForegroundColor Red
+                return
+            }
         }
     }
     foreach ($OU in $config.Tier0ServiceAccountPath){
         if ($OU -like "*DC=*"){
             if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
-                New-TierLevelOU -OUPath "$OU" -DomainDNS $domain |Out-Null
+                if (!(New-TierLevelOU -OUPath "$OU" -DomainDNS $domain |Out-Null)){
+                    Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
+                    Write-Host "script aborted" -ForegroundColor Red
+                    return
+                }
             }
         } else {
-            New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain | Out-Null
+            if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain | Out-Null)){
+                Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
+                Write-Host "script aborted" -ForegroundColor Red
+                return
+            }
         }
     }
     if (($scope -eq "Tier-1") -or ($scope -eq "All-Tiers")){
@@ -450,24 +482,44 @@ foreach ($domain in $config.Domains){
                     foreach ($OU in $config.Tier0UsersPath){
                         if ($OU -like "*DC=*"){
                             if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
-                                New-TierLevelOU -OUPath "$OU" -DomainDNS $domain |Out-Null
+                                if (!(New-TierLevelOU -OUPath "$OU" -DomainDNS $domain |Out-Null)){ 
+                                    Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
+                                    Write-Host "script aborted" -ForegroundColor Red
+                                    return
+                                }
                             }
                         } else {
-                            New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain | Out-Null
+                            if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain | Out-Null)){
+                                Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
+                                Write-Host "script aborted" -ForegroundColor Red
+                                return
+                            }
                         }
                     } -OUPath $OU -DomainDNS $domain |Out-Null
                 }
             } else {
-                New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain |Out-Null
+                if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain |Out-Null)){
+                    Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
+                    Write-Host "script aborted" -ForegroundColor Red
+                    return
+                }
             }
         }
         foreach ($OU in $config.tier1UsersPath){
             if ($OU -like "*DC=*"){
                 if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
-                    New-TierLevelOU -OUPath $OU -DomainDNS $domain |Out-Null
+                    if (!(New-TierLevelOU -OUPath $OU -DomainDNS $domain |Out-Null)){
+                        Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
+                        Write-Host "script aborted" -ForegroundColor Red
+                        return
+                    }
                 }
             } else {
-                New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain |Out-Null
+                if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain |Out-Null)){
+                    Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
+                    Write-Host "script aborted" -ForegroundColor Red
+                    return
+                }
             }
         }
     }
@@ -480,6 +532,8 @@ $GroupWaitCounter = 0 #If the universal group is create via a DC who is not a GC
 try {
     if ($Null -eq $Tier0ComputerGroup ){
         $Tier0ComputerGroup = New-ADGroup -Name $config.Tier0ComputerGroup -GroupScope Universal -Description $DescriptionT0ComputerGroup -Server $CurrentDC
+        Write-Host "The group $($config.Tier0ComputerGroup) is created in $((Get-ADDomain).UsersContainer). Move the group the valid OU" -ForegroundColor Yellow
+        Write-Host
         while (($Null -eq $Tier0ComputerGroup) -and ($GroupWaitCounter -lt 10)){
             Write-Host "The group $($config.Tier0ComputerGroup) is not visible in the forest. Waiting for 10 seconds" -ForegroundColor Yellow   
             Start-Sleep -Seconds 10
@@ -529,7 +583,7 @@ catch {
 if (($scope -eq "Tier-0") -or ($scope -eq "All-Tiers")){
     try {
         if ([bool](Get-ADAuthenticationPolicy -Filter "Name -eq '$($config.T0KerbAuthPolName)'")){
-            Write-Host "Kerberos Authentication Policy $($config.T0KerbAuthPolName)) already exists. Please validate the policy manual" -ForegroundColor Yellow
+            Write-Host "Kerberos Authentication Policy $($config.T0KerbAuthPolName) already exists. Please validate the policy manual" -ForegroundColor Yellow
         } else {
             #create a Kerberos authentication policy, wher assinged users can logon to members of enterprise domain controllers
             #or member of the Tier 0 server group
@@ -584,7 +638,7 @@ if (($scope -eq "Tier-1") -or ($scope -eq "All-Tiers")){
         exit
     }
 }
-#create the GMSA if the Tier Level isolation works in Mulit-Domain Forest mode
+#create the GMSA if the Tier Level isolation works in Mulit-Domain-Domain Forest mode
 if ($config.Domains.Count -gt 1){
     $strReadHost = Read-Host "Group Managed Service AccountName ($DefaultGMSAName)"
     if ($strReadHost -eq '') {$strReadHost = $DefaultGMSAName}
@@ -606,7 +660,6 @@ catch{
     Write-Host "can not copy the script file to $ScriptTarget" -ForegroundColor Red
 }
 try {
-    Write-Host "config file schreiben oder in AD schreiben" -ForegroundColor Yellow
     $config | ConvertTo-Json | Out-File $ConfigFile 
 }
 catch {
