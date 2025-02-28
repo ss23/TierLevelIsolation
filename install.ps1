@@ -42,6 +42,9 @@ possibility of such damages
         More detailed error message
     Version 0.2.20250218
         Update text messages
+    Version 0.2.20250228
+        fixed a bug whil creating the OUs. 
+        Type error removed
         
 #>
 
@@ -192,7 +195,7 @@ function IsMemberOfEnterpriseAdmins{
 #####################################################################################################################################################################################
 #region  Constanst and default value
 #####################################################################################################################################################################################
-$ScriptVersion = "0.2.20250218"
+$ScriptVersion = "0.2.20250228"
 #The current domain contains the relevant Tier level groups
 $CurrentDomainDNS = (Get-ADDomain).DNSRoot
 $CurrentDomainDN  = (Get-ADDomain).DistinguishedName
@@ -278,6 +281,8 @@ $config | Add-Member -MemberType NoteProperty -Name PrivilegedGroupsCleanUp -Val
 
 #This script requires the Active Director and Group Policy Powershell Module. The script terminal if one
 #of the module is missing
+Write-Host "Welcome to the Tier Level isolation setup script" -ForegroundColor Green
+Write-Host "This script will prepare you active directory to protect Administrators with Kerberos Authentication Policies" -ForegroundColor Green 
 Write-Host "Tier 0 / Tier 1 isolation setup script ($ScriptVersion)" -ForegroundColor Green
 try{
     Import-Module ActiveDirectory
@@ -349,7 +354,7 @@ if (($scope -eq "Tier-0") -or ( $scope -eq "All-Tiers") ){
         if ($config.Tier0UsersPath -notcontains $strReadHost){
             $config.Tier0UsersPath += $strReadHost
         }
-        $strReadHost = Read-Host "Do you want to add another Tier 0 user OU (y/[n])"
+        $strReadHost = Read-Host "Do you want to add another Tier 0 Admin OU (y/[n])"
     } while ($strReadHost -like "y*")
     do {
         $strReadHost = Read-Host "Distinguishedname of the Tier 0 service account OU($defaultT0ServiceAccountPath)"
@@ -394,7 +399,7 @@ if (($scope -eq "Tier-1") -or ( $scope -eq "All-Tiers")){
         if ($strReadHost -eq '') {$strReadHost = $DefaultT1Computers}
         if ($config.Tier1ComputerPath -notcontains $strReadHost){
             $config.Tier1ComputerPath += $strReadHost
-            $strReadHost = Read-Host "Do you want to add another Tier 0 server OU (y/[n])"
+            $strReadHost = Read-Host "Do you want to add another Tier 1 server OU (y/[n])"
         } 
     }while ($strReadHost -like "y*")
     $strReadHost = Read-Host "Provide the Tier 1 Kerberos Authentication policy name ($DefaultT1KerbAuthPolName)"
@@ -427,14 +432,14 @@ foreach ($domain in $config.Domains){
     foreach ($OU in $config.Tier0ComputerPath){
         if ($OU -like "*DC=*"){
             if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
-                if (!(New-TierLevelOU -OUPath "$OU" -DomainDNS $domain |Out-Null)){
+                if (!(New-TierLevelOU -OUPath "$OU" -DomainDNS $domain )){
                     Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
                     Write-Host "script aborted" -ForegroundColor Red
                     return
                 }
             }
         } else {
-            if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain | Out-Null)){
+            if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain )){
                 Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
                 Write-Host "script aborted" -ForegroundColor Red
                 return
@@ -444,14 +449,14 @@ foreach ($domain in $config.Domains){
     foreach ($OU in $config.Tier0UsersPath){
         if ($OU -like "*DC=*"){
             if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
-                if (!(New-TierLevelOU -OUPath "$OU" -DomainDNS $domain |Out-Null)){
+                if (!(New-TierLevelOU -OUPath "$OU" -DomainDNS $domain )){
                     Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
                     Write-Host "script aborted" -ForegroundColor Red
                     return
                 }
             }
         } else {
-            if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain | Out-Null)){
+            if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain )){
                 Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
                 Write-Host "script aborted" -ForegroundColor Red
                 return
@@ -461,14 +466,14 @@ foreach ($domain in $config.Domains){
     foreach ($OU in $config.Tier0ServiceAccountPath){
         if ($OU -like "*DC=*"){
             if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
-                if (!(New-TierLevelOU -OUPath "$OU" -DomainDNS $domain |Out-Null)){
+                if (!(New-TierLevelOU -OUPath "$OU" -DomainDNS $domain)){
                     Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
                     Write-Host "script aborted" -ForegroundColor Red
                     return
                 }
             }
         } else {
-            if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain | Out-Null)){
+            if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain )){
                 Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
                 Write-Host "script aborted" -ForegroundColor Red
                 return
@@ -482,14 +487,14 @@ foreach ($domain in $config.Domains){
                     foreach ($OU in $config.Tier0UsersPath){
                         if ($OU -like "*DC=*"){
                             if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
-                                if (!(New-TierLevelOU -OUPath "$OU" -DomainDNS $domain |Out-Null)){ 
+                                if (!(New-TierLevelOU -OUPath "$OU" -DomainDNS $domain )){ 
                                     Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
                                     Write-Host "script aborted" -ForegroundColor Red
                                     return
                                 }
                             }
                         } else {
-                            if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain | Out-Null)){
+                            if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain )){
                                 Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
                                 Write-Host "script aborted" -ForegroundColor Red
                                 return
@@ -498,7 +503,7 @@ foreach ($domain in $config.Domains){
                     } -OUPath $OU -DomainDNS $domain |Out-Null
                 }
             } else {
-                if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain |Out-Null)){
+                if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain )){
                     Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
                     Write-Host "script aborted" -ForegroundColor Red
                     return
@@ -508,14 +513,14 @@ foreach ($domain in $config.Domains){
         foreach ($OU in $config.tier1UsersPath){
             if ($OU -like "*DC=*"){
                 if ([regex]::Match($OU,$RegExDNDomain).Value -eq $DomainDN){
-                    if (!(New-TierLevelOU -OUPath $OU -DomainDNS $domain |Out-Null)){
+                    if (!(New-TierLevelOU -OUPath $OU -DomainDNS $domain )){
                         Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
                         Write-Host "script aborted" -ForegroundColor Red
                         return
                     }
                 }
             } else {
-                if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain |Out-Null)){
+                if (!(New-TierLevelOU -OUPath "$OU,$DomainDN" -DomainDNS $domain )){
                     Write-Host "Can't create the OU $OU in $domain" -ForegroundColor Red
                     Write-Host "script aborted" -ForegroundColor Red
                     return
