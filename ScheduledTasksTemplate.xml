@@ -198,18 +198,22 @@
 					<Priority>7</Priority>
 				</Settings>
 				<Triggers>
+				<Triggers>
 					<CalendarTrigger>
-						<StartBoundary>2024-12-06T12:05:00</StartBoundary>
-						<Enabled>false</Enabled>
+						<StartBoundary>2024-12-06T12:00:00</StartBoundary>
+						<Enabled>true</Enabled>
 						<ScheduleByDay>
 							<DaysInterval>1</DaysInterval>
 						</ScheduleByDay>
+						<RandomDelay>PT1H</RandomDelay>
 						<Repetition>
-							<Interval>PT10M</Interval>
+							<Interval>PT1H</Interval>
 							<Duration>P1D</Duration>
 							<StopAtDurationEnd>false</StopAtDurationEnd>
 						</Repetition>
 					</CalendarTrigger>
+				</Triggers>
+
 				</Triggers>
 				<Actions Context="Author">
 					<Exec>
@@ -260,7 +264,7 @@
 			<Actions Context="Author">
 				<Exec>
 					<Command>powershell.exe</Command>
-					<Arguments>"$GMSA = Get-ADServiceAccount -Identity '#GMSAName';$principal = New-ScheduledTaskPrincipal -LogonType Password -userID $GMSA.SID;Set-ScheduledTask 'Tier 0 User Management' -Principal $principal;Set-ScheduledTask 'Tier 1 User Management' -Principal $principal"</Arguments>	
+					<Arguments>-command "$GMSA = Get-ADServiceAccount -Identity '#GMSAName';$principal = New-ScheduledTaskPrincipal -LogonType Password -userID $GMSA.SID;Set-ScheduledTask 'Tier 0 User Management' -Principal $principal;Set-ScheduledTask 'Tier 1 User Management' -Principal $principal"</Arguments>
 				</Exec>
 			</Actions>
 			</Task>

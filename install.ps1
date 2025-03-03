@@ -45,6 +45,8 @@ possibility of such damages
     Version 0.2.20250228
         fixed a bug whil creating the OUs. 
         Type error removed
+    Version 0.2.20250303
+        Fixed a bug while updating the Schedulted task XML file
         
 #>
 
@@ -195,7 +197,7 @@ function IsMemberOfEnterpriseAdmins{
 #####################################################################################################################################################################################
 #region  Constanst and default value
 #####################################################################################################################################################################################
-$ScriptVersion = "0.2.20250228"
+$ScriptVersion = "0.2.202500303"
 #The current domain contains the relevant Tier level groups
 $CurrentDomainDNS = (Get-ADDomain).DNSRoot
 $CurrentDomainDN  = (Get-ADDomain).DistinguishedName
@@ -220,9 +222,9 @@ $DefaultT1KerbAuthPolName = "Tier 1 restriction"
 $DefaultT0Users = "OU=Admins,OU=Tier 0,OU=Admin"
 $DefaultT1Users = "OU=Admins,OU=Tier 1,OU=Admin"
 #Default path of the Tier Level users OU
-$DefaultT0Computers          =        "OU=Computers,OU=Tier 0,OU=Admin"
+$DefaultT0Computers          =        "OU=Server,OU=Tier 0,OU=Admin"
 $DefaultT0ServiceAccountPath = "OU=Service Accounts,OU=Tier 0,OU=Admin"
-$DefaultT1Computers          =        "OU=Computers,OU=Tier 1,OU=Admin"
+$DefaultT1Computers          =        "OU=Server,OU=Tier 1,OU=Admin"
 
 
 #Default name of the Claim groups
@@ -308,7 +310,7 @@ if (((Get-ADForest).Domains.count -eq 1) -or ($SingleDomain)){
     $SingleDomain = $true
     $config.Domains += $CurrentDomainDNS
 } else {
-    $strReadHost = Read-Host "Do you want to enable the mulit-domain-forest mode ([y]es / No)"
+    $strReadHost = Read-Host "Do you want to enable the multi-domain-forest mode ([y]es / No)"
     if (($strReadHost -eq '') -or ($strReadHost -like "y*")){
         $SingleDomain = $false
         Write-Host "Forest Mode is enabled"
@@ -677,7 +679,7 @@ try {
 
     $ScheduleTaskRaw = Get-Content ".\ScheduledTasksTemplate.xml"
     $ScheduleTaskRaw = $ScheduleTaskRaw.Replace("#ScriptPath", $ScriptTarget) 
-    $ScheduleTaskRaw = $ScheduleTaskRaw.Replace("#GmsaName", $GMSAName)
+    $ScheduleTaskRaw = $ScheduleTaskRaw.Replace("#GMSAName", $GMSAName)
     [XML]$ScheduleTaskXML = $ScheduleTaskRaw
     #Enable Claim Support on Domain Controllers. 
     #Write this setting to the default domain controller policy  
