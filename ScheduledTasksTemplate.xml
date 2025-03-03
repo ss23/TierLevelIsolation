@@ -34,7 +34,7 @@
 				<Actions Context="Author">
 					<Exec>
 						<Command>powershell.exe</Command>
-						<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelComputerManagement.ps1" -Scope 'Tier-0'</Arguments>
+						<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelComputerManagement.ps1" -Scope Tier-0</Arguments>
 					</Exec>
 				</Actions>
 				<Triggers>
@@ -88,7 +88,7 @@
 				<Actions Context="Author">
 					<Exec>
 						<Command>powershell.exe</Command>
-						<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelComputerManagement.ps1" -Scope 'Tier-1'</Arguments>
+						<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelComputerManagement.ps1" -Scope Tier-1</Arguments>
 					</Exec>
 				</Actions>
 				<Triggers>
@@ -157,7 +157,7 @@
 			<Actions Context="Author">
 				<Exec>
 					<Command>powershell.exe</Command>
-					<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelUserManagement.ps1" -Scope 'Tier-0'</Arguments>
+					<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelUserManagement.ps1" -Scope Tier-0</Arguments>
 				</Exec>
 			</Actions>
 		</Task>
@@ -218,7 +218,7 @@
 				<Actions Context="Author">
 					<Exec>
 						<Command>powershell.exe</Command>
-						<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelUserManagement.ps1" -Scope 'Tier-1'</Arguments>
+						<Arguments>-executionpolicy bypass -NoProfile -NonInteractive -file "#ScriptPath\TierLevelUserManagement.ps1" -Scope Tier-1</Arguments>
 					</Exec>
 				</Actions>
 			</Task>
