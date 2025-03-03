@@ -198,22 +198,19 @@
 					<Priority>7</Priority>
 				</Settings>
 				<Triggers>
-				<Triggers>
 					<CalendarTrigger>
 						<StartBoundary>2024-12-06T12:00:00</StartBoundary>
-						<Enabled>true</Enabled>
+						<Enabled>false</Enabled>
 						<ScheduleByDay>
 							<DaysInterval>1</DaysInterval>
 						</ScheduleByDay>
 						<RandomDelay>PT1H</RandomDelay>
 						<Repetition>
-							<Interval>PT1H</Interval>
-							<Duration>P1D</Duration>
-							<StopAtDurationEnd>false</StopAtDurationEnd>
+						<Interval>PT10M</Interval>
+						<Duration>P1D</Duration>
+						<StopAtDurationEnd>false</StopAtDurationEnd>
 						</Repetition>
 					</CalendarTrigger>
-				</Triggers>
-
 				</Triggers>
 				<Actions Context="Author">
 					<Exec>
@@ -256,10 +253,19 @@
 				<Priority>7</Priority>
 			</Settings>
 			<Triggers>
-				<TimeTrigger>
-					<StartBoundary>2024-12-06T15:24:07</StartBoundary>
-					<Enabled>true</Enabled>
-				</TimeTrigger>
+					<CalendarTrigger>
+						<StartBoundary>2024-12-06T12:00:00</StartBoundary>
+						<Enabled>true</Enabled>
+						<ScheduleByDay>
+						<DaysInterval>1</DaysInterval>
+						</ScheduleByDay>
+						<RandomDelay>PT1H</RandomDelay>
+						<Repetition>
+							<Interval>PT1H</Interval>
+							<Duration>P1D</Duration>
+							<StopAtDurationEnd>false</StopAtDurationEnd>
+						</Repetition>
+					</CalendarTrigger>
 			</Triggers>
 			<Actions Context="Author">
 				<Exec>
