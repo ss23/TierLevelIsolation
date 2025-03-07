@@ -37,10 +37,10 @@ possibility of such damages
         Initial Version
     Version[AL] 20241223
         Documentation update
-    
-
-            The script creates a debug log in the user data app folder. This log file contains additional debug informations
-    Important events are writte to the application log
+                The script creates a debug log in the user data app folder. This log file contains additional debug informations
+        Important events are writte to the application log
+    Version 0.2.20250304
+        Provide logfile in the start message
 #>
 
 param(
@@ -192,7 +192,7 @@ $ADconfigurationPath = "CN=Tier Level Isolation,CN=Services,$((Get-ADRootDSE).co
 #endregion
 
 #script Version 
-$ScriptVersion = "0.2.20241223"
+$ScriptVersion = "0.2.20250304"
 #region Manage log file
 [int]$MaxLogFileSize = 1048576 #Maximum size of the log file
 $LogFile = "$($env:LOCALAPPDATA)\$($MyInvocation.MyCommand).log" #Name and path of the log file
@@ -208,7 +208,7 @@ if (Test-Path $LogFile) {
 #endregion
 #using the next closest global catalog server
 $GlobalCatalog = (Get-ADDomainController -Discover -Service GlobalCatalog -NextClosestSite ).HostName
-Write-Log -Message "Tier Isolation computer management $Scope version $ScriptVersion started. $($MyInvocation.Line)" -Severity Information -EventID 1000
+Write-Log -Message "Tier Isolation computer management $Scope version $ScriptVersion started. $($MyInvocation.Line) see $logFile " -Severity Information -EventID 1000
 
 #region read configuration
 try{

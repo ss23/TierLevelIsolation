@@ -45,6 +45,8 @@ possibility of such damages
 
     All events written to the log file. Information, Warnings and error events are written to the eventlog
     All event IDs documented in EventID.md
+    Version 0.2.20250304
+        Provide logfile in the start message
 
 #>
 param(
@@ -339,7 +341,7 @@ function ConvertTo-DistinguishedNames{
 # Main program starts here
 ##############################################################################################################################
 #script Version 
-$ScriptVersion = "0.2.20250218"
+$ScriptVersion = "0.2.20250304"
 
 #region constantes
 $config = $null
@@ -370,7 +372,7 @@ if (Test-Path $LogFile) {
     }
 }
 #endregion
-Write-Log -Message "Tier Isolation user management $Scope version $ScriptVersion started" -Severity Information -EventID 2000
+Write-Log -Message "Tier Isolation user management $Scope version $ScriptVersion started. see $LogFile for more details" -Severity Information -EventID 2000
 #region read configuration
 try{
     if ($ConfigFile -eq '') {

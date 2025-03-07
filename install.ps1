@@ -47,6 +47,8 @@ possibility of such damages
         Type error removed
     Version 0.2.20250303
         Fixed a bug while updating the Schedulted task XML file
+    Version 0.2.20250306
+        new created Tier 0 / Tier 1 server group will be set to adminCount = 1
         
 #>
 
@@ -197,7 +199,7 @@ function IsMemberOfEnterpriseAdmins{
 #####################################################################################################################################################################################
 #region  Constanst and default value
 #####################################################################################################################################################################################
-$ScriptVersion = "0.2.202500303"
+$ScriptVersion = "0.2.202500306"
 #The current domain contains the relevant Tier level groups
 $CurrentDomainDNS = (Get-ADDomain).DNSRoot
 $CurrentDomainDN  = (Get-ADDomain).DistinguishedName
@@ -538,13 +540,14 @@ $Tier1ComputerGroup = Get-ADGroup -Filter "SamAccountName -eq '$($config.Tier1Co
 $GroupWaitCounter = 0 #If the universal group is create via a DC who is not a GC, the group is not visible in the forest until the GC is replicated
 try {
     if ($Null -eq $Tier0ComputerGroup ){
-        $Tier0ComputerGroup = New-ADGroup -Name $config.Tier0ComputerGroup -GroupScope Universal -Description $DescriptionT0ComputerGroup -Server $CurrentDC
+        New-ADGroup -Name $config.Tier0ComputerGroup -GroupScope Universal -Description $DescriptionT0ComputerGroup -Server $CurrentDC
         Write-Host "The group $($config.Tier0ComputerGroup) is created in $((Get-ADDomain).UsersContainer). Move the group the valid OU" -ForegroundColor Yellow
-        Write-Host
+        $Tier0ComputerGroup = Get-ADgroup -Identity $config.Tier0ComputerGroup -Properties adminCount         
         while (($Null -eq $Tier0ComputerGroup) -and ($GroupWaitCounter -lt 10)){
             Write-Host "The group $($config.Tier0ComputerGroup) is not visible in the forest. Waiting for 10 seconds" -ForegroundColor Yellow   
             Start-Sleep -Seconds 10
             $Tier0ComputerGroup = Get-ADGroup -Identity $config.Tier0ComputerGroup -Server $CurrentDC
+            $GroupWaitCounter++
         }
         if ($Null -eq $Tier0ComputerGroup){
             Write-Host "Can't create the group $($config.Tier0ComputerGroup). Script aborted" -ForegroundColor Red
@@ -552,19 +555,24 @@ try {
             return
         } else {
             $GroupWaitCounter = 0
-        }
+            $Tier0ComputerGroup | Set-ADObject -replace @{adminCount=1}
+        }        
     }
     if (($null -eq $Tier1ComputerGroup ) -and (($scope -eq "Tier-1") -or ($scope -eq "All-Tiers"))){
-        $Tier1ComputerGroup = New-ADGroup -Name $config.Tier1ComputerGroup -GroupScope Universal -Description $DescriptionT1ComputerGroup -Server $CurrentDC
+        New-ADGroup -Name $config.Tier1ComputerGroup -GroupScope Universal -Description $DescriptionT1ComputerGroup -Server $CurrentDC
+        $Tier0ComputerGroup = Get-ADGroup -Identity $config.Tier1ComputerGroup
         while (($Null -eq $Tier1ComputerGroup) -and ($GroupWaitCounter -lt 10)){
             Write-Host "The group $($config.Tier1ComputerGroup) is not visible in the forest. Waiting for 10 seconds" -ForegroundColor Yellow   
             Start-Sleep -Seconds 10
+            $GroupWaitCounter++
             $Tier1ComputerGroup = Get-ADGroup -Identity $config.Tier1ComputerGroup -Server $CurrentDC
         }
         if ($null -eq $Tier1ComputerGroup){
             Write-Host "Can't create the group $($config.Tier1ComputerGroup). Script aborted" -ForegroundColor Red
             Write-Host "script aborted" -ForegroundColor Red
             return
+        } else {
+            $Tier1ComputerGroup | Set-ADObject -replace @{adminCount=1}
         }
     }
 }
