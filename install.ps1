@@ -49,6 +49,9 @@ possibility of such damages
         Fixed a bug while updating the Schedulted task XML file
     Version 0.2.20250306
         new created Tier 0 / Tier 1 server group will be set to adminCount = 1
+    Version 0.2.20250313
+        Fixed an bug in the tier 0 Kerberos Authenticaiton policy claim.
+        Added the description to the Tier 0 / Tier 1 Kerberos Authentication policy
         
 #>
 
@@ -199,7 +202,7 @@ function IsMemberOfEnterpriseAdmins{
 #####################################################################################################################################################################################
 #region  Constanst and default value
 #####################################################################################################################################################################################
-$ScriptVersion = "0.2.202500306"
+$ScriptVersion = "0.2.202500313"
 #The current domain contains the relevant Tier level groups
 $CurrentDomainDNS = (Get-ADDomain).DNSRoot
 $CurrentDomainDN  = (Get-ADDomain).DistinguishedName
@@ -214,8 +217,8 @@ $DescriptionT1ComputerGroup = "This group contains any Tier 1 member computer. T
 $DescriptionGMSA = "This Group Managed service account is used to manage user accounts and groups impacted by the Tier Level Model"
 #This Description will be added to the Tier 0 / Tier 1 Kerberos Authentication Policy if they doesn't exists.This Description can't be changed during the setup. 
 #But i can be changed after the setup
-$DescriptionTier0CKerberosAuthenticationPolicy = "..."
-$DescriptionTier1CKerberosAuthenticationPolicy = "..."
+$DescriptionTier0CKerberosAuthenticationPolicy = "This policy aims to isolate Tier 0 systems to ensure the security and integrity of critical IT infrastructures. Users assigned this policy can only log in to computers that are members of the 'Enterprise Domain Controller' group or the 'Tier 0 Server'group. This ensures that only authorized users have access to the most sensitive systems within the organization."
+$DescriptionTier1CKerberosAuthenticationPolicy = "This policy aims to isolate Tier 1 systems to ensure the security and integrity of IT infrastructures. Users assigned this policy can only log in to computers that are members of the 'Tier 1 Server' group or 'Enterprise Domain Controller' group or the 'Tier 0 Server'group. This ensures that only authorized users have access to the most sensitive systems within the organization."
 
 #Default values for the Kerberos Authenticaiton policy
 $DefaultT0KerbAuthPolName = "Tier 0 restriction"
@@ -560,7 +563,7 @@ try {
     }
     if (($null -eq $Tier1ComputerGroup ) -and (($scope -eq "Tier-1") -or ($scope -eq "All-Tiers"))){
         New-ADGroup -Name $config.Tier1ComputerGroup -GroupScope Universal -Description $DescriptionT1ComputerGroup -Server $CurrentDC
-        $Tier0ComputerGroup = Get-ADGroup -Identity $config.Tier1ComputerGroup
+        $Tier1ComputerGroup = Get-ADGroup -Identity $config.Tier1ComputerGroup
         while (($Null -eq $Tier1ComputerGroup) -and ($GroupWaitCounter -lt 10)){
             Write-Host "The group $($config.Tier1ComputerGroup) is not visible in the forest. Waiting for 10 seconds" -ForegroundColor Yellow   
             Start-Sleep -Seconds 10
