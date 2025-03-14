@@ -18,6 +18,7 @@ Applies the Kerberos Authentication Policy to the Tier Level administrators
 ## Installation 
 The installation script establishes the necessary tiering structure within one or all Active Directory domains in your forest. It prepares the Active Directory domains to support Kerberos Armoring. 
 The final step of the installation involves creating a group policy on the Domain Controller OU to install scheduled tasks for management scripts. To install this solution, download the latest version from the GitHub repository. Depending on your PowerShell restrictions, sign the scripts if necessary. The installation commences with the install.ps1 script, which will guide you through the process. Ensure the Active Directory PowerShell module and the Group Policy Management PowerShell module are installed before starting the script.
+
 Initially, the script detects if your Active Directory has multiple domains. If there is more than one domain available, it will ask if you wish to run the solution in Multi-forest mode:
     Do you want to enable the multi-domain-forest mode ([y]es / No):
 If the response is [y]es, tiering will be activated across the entire forest. Subsequently, you must specify the scope of your tiering by selecting Tier 0, Tier 1, or both levels:
@@ -26,14 +27,24 @@ If the response is [y]es, tiering will be activated across the entire forest. Su
     [1] Tier-1
     [2] Tier 0 and Tier 1
     Select which scope should be enabled (2):
+
 Next, define the Tier 0 Admin OU by providing the relative OU path (the domain distinguished name is not required). The script will replicate the same tiering structure across all domains.
+
     Distinguishedname of the Tier 0 Admin OU (OU=Admins,OU=Tier 0,OU=Admin):
+
 You have the option to define multiple tiering OUs in your environment. Additionally, specify the distinguished name of the OU where your Tier 0 service accounts are located.
+
 It is possible to add multiple service account OUs. Define the OU where the Tier 0 member servers are located, noting that subfolders within this OU do not need separate configuration.
+
 Provide the name of the Tier 0 Kerberos authentication policy and the name of the Active Directory group containing Tier 0 member servers. If this group does not exist, it will be created.
-For Tier 1 configuration, provide the name of the group containing Tier 1 member servers; again, the group will be created if it doesn't exist. Specify the distinguished name of the Tier 1 administrators OU and define one or more OUs for Tier 1 member servers.
+
+For Tier 1 configuration, provide the name of the group containing Tier 1 member servers; again, the group will be created if it doesn't exist. 
+Specify the distinguished name of the Tier 1 administrators OU and define one or more OUs for Tier 1 member servers.
+
 After naming the Tier 1 Kerberos Authentication Policy, decide whether to add your administrators to the protected users group. Enabling privileged group cleanup applies only to Tier 0 users, removing users from privileged groups unless they are located in the Tier 0 administrator OU or service account OU. This ensures privileged users are always correctly grouped, excluding Built-In Administrators and GMSA accounts.
+
 In a multi-domain configuration, a group managed service account is required. The installation script will create this account. The script then copies TierLevelComputerManagement.ps1, TierLevelUserManagement.ps1, and configuration files into the SYSVOL folder (\\<domain>\SYSVOL\<domain>\scripts), and installs a group policy on the Domain Controller OU.
+
 This group policy contains the scheduled tasks, which are initially disabled and must be enabled manually to prevent unintended administrator lockouts. Before enabling these tasks, ensure all member servers belong to the Tier 0 computers or Tier 1 computers group—both universal groups appearing once in the AD forest.
 
 
