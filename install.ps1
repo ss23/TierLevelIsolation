@@ -52,6 +52,8 @@ possibility of such damages
     Version 0.2.20250313
         Fixed an bug in the tier 0 Kerberos Authenticaiton policy claim.
         Added the description to the Tier 0 / Tier 1 Kerberos Authentication policy
+    Version 0.2.20250314
+        The GMSA will be added to the enterprise admins group if the gmsa is not a member of the enterprise admins group
         
 #>
 
@@ -202,7 +204,7 @@ function IsMemberOfEnterpriseAdmins{
 #####################################################################################################################################################################################
 #region  Constanst and default value
 #####################################################################################################################################################################################
-$ScriptVersion = "0.2.202500313"
+$ScriptVersion = "0.2.202500314"
 #The current domain contains the relevant Tier level groups
 $CurrentDomainDNS = (Get-ADDomain).DNSRoot
 $CurrentDomainDN  = (Get-ADDomain).DistinguishedName
@@ -668,6 +670,18 @@ if ($config.Domains.Count -gt 1){
             Add-KdsRootKey -EffectiveTime ((Get-Date).AddHours(-10))
         }
         New-GMSA -GMSAName $GMSAName -AllowTOLogon (Get-ADGroup -Identity "$((Get-ADDomain).DomainSID)-516") -Description $DescriptionGMSA
+    }
+    $oGMSA = Get-ADServiceAccount -Filter "name -eq '$GMSAName'"
+    $ForestRootDomain = (Get-ADForest).RootDomain
+    $EAdminsGroup = Get-ADGroup -Identity "$((Get-ADDomain -server (Get-ADForest).RootDomain).DomainSid)-519" -Properties Members -Server $ForestRootDomain
+    try {
+        if ($EAdminsGroup.Members -notcontains $oGMSA.DistinguishedName){
+            Add-ADGroupMember $EAdminsGroup -Members $oGMSA -Server $ForestRootDomain
+            Write-Host "The group $($oGMSA.Name) is added to the Enterprise Admins group" -ForegroundColor Yellow
+        }
+    }
+    catch{
+        Write-Host "The group $($oGMSA.Name) is not added to the Enterprise Admins group. Please add the group manually" -ForegroundColor Yellow
     }
 }
 try{

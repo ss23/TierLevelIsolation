@@ -109,7 +109,7 @@
 		</Properties>
 	</TaskV2>
 	<TaskV2 clsid="{D8896631-B747-47a7-84A6-C155337F3BC8}" name="Tier 0 User Management" image="2" changed="2024-12-06 14:26:40" uid="{A26FE3E3-9BD7-4172-92DF-748622701717}">
-		<Properties action="U" name="Tier 0 User Management" runAs="NT AUTHORITY\System" logonType="S4U">
+		<Properties action="C" name="Tier 0 User Management" runAs="NT AUTHORITY\System" logonType="S4U">
 			<Task version="1.2">
 			<RegistrationInfo>
 				<Author>Tiering\Administrator</Author>
@@ -164,7 +164,7 @@
 		</Properties>
 	</TaskV2>
 	<TaskV2 clsid="{D8896631-B747-47a7-84A6-C155337F3BC8}" name="Tier 1 User Management" image="2" changed="2024-12-06 14:28:43" uid="{1CD57939-879D-44F9-A38F-7C140A58F041}">
-		<Properties action="U" name="Tier 1 User Management" runAs="NT AUTHORITY\System" logonType="S4U">
+		<Properties action="C" name="Tier 1 User Management" runAs="NT AUTHORITY\System" logonType="S4U">
 			<Task version="1.2">
 				<RegistrationInfo>
 					<Author>Tiering\Administrator</Author>

@@ -42,6 +42,7 @@
 |2011   | Debug      | a error occured during the Tier 0 account isolation          |
 |2012   | Debug      | successfully isolation of Tier 1 account                     |
 |2013   | Debug      | a error occured during the Tier 1 account isolation          |
+|2014   | Debug      | calling the Set-TierLevelIsolation function                  |
 |2101   | Error      | Kerberos Authenticatin Policy not found                      |
 |2102   | Warning    | OU missing                                                   |
 |2103   | Warning    | The Built-In Administrator located in Tier 0 users OU        |

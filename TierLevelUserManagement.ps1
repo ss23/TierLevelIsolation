@@ -47,6 +47,10 @@ possibility of such damages
     All event IDs documented in EventID.md
     Version 0.2.20250304
         Provide logfile in the start message
+    Version 0.2.20250314
+        New debug information added
+        Fixed a bug adding the user to the protected users group. The script will now check if the user is already a member of the protected users group
+        and add the user to the protected users group.
 
 #>
 param(
@@ -160,6 +164,7 @@ function Set-TierLevelIsolation{
     )
     $retval = $false
     try {
+        Write-Log -Message "Start Set-TierLevelIsolation for $DomainDNS -ProtectedUsersGroup $AddProtectedUsersGroup" -Severity Debug -EventID 2014
         $DomainDN = (Get-ADDomain -Server $DomainDNS).DistinguishedName
         #Validate the Kerboers Authentication policy exists. If not terminate the script with error code 0xA3. 
         $KerberosAuthenticationPolicy = Get-ADAuthenticationPolicy -Filter "Name -eq '$($KerbAuthPolName)'"
@@ -169,7 +174,7 @@ function Set-TierLevelIsolation{
         }
         $oProtectedUsersGroup = Get-ADGroup -Identity "$((Get-ADDomain -Server $DomainDNS).DomainSID)-525" -Server $DomainDNS -Properties member
         foreach ($OU in $OrgUnits){
-            if ($OU -like "*$DomainDN"){
+            if($OU -match "OU=[^,]*,$DomainDN"){
                 if ($null -eq (Get-ADOrganizationalUnit -Filter "DistinguishedName -eq '$OU'" -Server $DomainDNS)){
                     Write-Log -Message "The OU $OU doesn't exists in $DomainDNS" -Severity Warning -EventID 2102
                 } else {
@@ -189,9 +194,9 @@ function Set-TierLevelIsolation{
                                 Write-Log -Message "Mark $($User.DistinguishedName) as sensitive and cannot be delegated" -Severity Information -EventID 2105
                             }
                             #Protected user group validation
-                            if ($AddProtectedUsersGroup -and ($oProtectedUsersGroup.member -notcontains $user.Distiguishedname)){
+                            if ($AddProtectedUsersGroup -and ($oProtectedUsersGroup.member -notcontains $user.DistinguishedName)){
                                 Add-ADGroupMember -Identity $oProtectedUsersGroup $user -Server $DomainDNS
-                                Write-Log "User $($user.Distiguishedname) is addeded to protected users in $Domain" -Severity Information -EventID 2106
+                                Write-Log "User $($user.DistinguishedName) is addeded to protected users in $Domain" -Severity Information -EventID 2106
                             }
                         }
                     }
@@ -341,7 +346,7 @@ function ConvertTo-DistinguishedNames{
 # Main program starts here
 ##############################################################################################################################
 #script Version 
-$ScriptVersion = "0.2.20250304"
+$ScriptVersion = "0.2.20250314"
 
 #region constantes
 $config = $null
@@ -380,7 +385,7 @@ try{
         #last resort if the configfile paramter is not available and no configuration is stored in the AD. check for the dafault configuration file
         if ($null -eq $config){
             if ((Test-Path -Path $DefaultConfigFile)){
-                Write-Log -Message "Read config from $ConfigFile" -Severity Debug -EventID 2003
+                Write-Log -Message "Read config from $DefaultConfigFile" -Severity Debug -EventID 2003
                 $config = Get-Content $DefaultConfigFile | ConvertFrom-Json            
             } else {
                 Write-Log -Message "Can't find the configuration in $DefaultConfigFile or Active Directory" -Severity Error -EventID 2004
@@ -435,8 +440,8 @@ switch ($scope) {
 $T0ProtectedUsers = $false
 $T1ProtectedUsers = $false
 switch ($config.ProtectedUsers) {
-    {-contains "Tier-0"} { $T0ProtectedUsers = $true }
-    {-contains "Tier-1"} { $T1ProtectedUsers = $true }
+    {$_ -contains "Tier-0"} { $T0ProtectedUsers = $true }
+    {$_ -contains "Tier-1"} { $T1ProtectedUsers = $true }
 }
 
 foreach ($Domain in $config.Domains){
