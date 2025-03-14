@@ -19,9 +19,9 @@ possibility of such damages
     Managing of Tier 0 and Tier 1 computer groups
 
 .DESCRIPTION
-    This script add or remove computer objects if they are not located in specific Tier 0 or Tier 1 
-    computer OU.
-    The script allows multiple OU's for Tier 0 / 1
+    This PowerShell script is designed to manage computer objects within Tier 0 and Tier 1 computer groups in an Active Directory (AD) environment. It ensures that computer objects are correctly placed in their respective Organizational Units (OUs) and updates the membership of the Tier 0 and Tier 1 computer groups accordingly.
+
+
 .OUTPUTS 
     None
 .PARAMETER ConfigFile
@@ -41,6 +41,8 @@ possibility of such damages
         Important events are writte to the application log
     Version 0.2.20250304
         Provide logfile in the start message
+    Version 0.2.20250314
+        Documentation update
 #>
 
 param(
@@ -192,7 +194,7 @@ $ADconfigurationPath = "CN=Tier Level Isolation,CN=Services,$((Get-ADRootDSE).co
 #endregion
 
 #script Version 
-$ScriptVersion = "0.2.20250304"
+$ScriptVersion = "0.2.20250314"
 #region Manage log file
 [int]$MaxLogFileSize = 1048576 #Maximum size of the log file
 $LogFile = "$($env:LOCALAPPDATA)\$($MyInvocation.MyCommand).log" #Name and path of the log file
