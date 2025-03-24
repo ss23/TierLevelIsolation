@@ -43,6 +43,8 @@ possibility of such damages
         Provide logfile in the start message
     Version 0.2.20250314
         Documentation update
+    Version 0.2.20250320
+        Default configuration file change from tiering.json to TierLevelIsolation.config
 #>
 
 param(
@@ -188,13 +190,13 @@ function Get-UnexpectedComputerObjects{
 #Is the current domain DNS name.
 $CurrentDomainDNS = (Get-ADDomain).DNSRoot
 #The default configuration file is located in the SYSVOL path of the current domain
-$DefaultConfigFile = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts\Tiering.config"
+$DefaultConfigFile = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts\TierLevelIsolation.config"
 #The default path to the configuration in the Active Directory configuration partition
 $ADconfigurationPath = "CN=Tier Level Isolation,CN=Services,$((Get-ADRootDSE).configurationNamingContext)"
 #endregion
 
 #script Version 
-$ScriptVersion = "0.2.20250314"
+$ScriptVersion = "0.2.20250320"
 #region Manage log file
 [int]$MaxLogFileSize = 1048576 #Maximum size of the log file
 $LogFile = "$($env:LOCALAPPDATA)\$($MyInvocation.MyCommand).log" #Name and path of the log file

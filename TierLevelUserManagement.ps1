@@ -51,6 +51,8 @@ possibility of such damages
         New debug information added
         Fixed a bug adding the user to the protected users group. The script will now check if the user is already a member of the protected users group
         and add the user to the protected users group.
+    Version 0.2.20250320
+        Default configuration file name changed from tiering.config to TierLevlIsolation.config
 
 #>
 param(
@@ -346,13 +348,13 @@ function ConvertTo-DistinguishedNames{
 # Main program starts here
 ##############################################################################################################################
 #script Version 
-$ScriptVersion = "0.2.20250314"
+$ScriptVersion = "0.2.20250320"
 
 #region constantes
 $config = $null
 #the current domain must contains the Tier level user groups
 $CurrentDomainDNS = (Get-ADDomain).DNSRoot
-$DefaultConfigFile = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts\Tiering.config"
+$DefaultConfigFile = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts\TierLevlIsolation.config"
 $ADconfigurationPath = "CN=Tier Level Isolation,CN=Services,$((Get-ADRootDSE).configurationNamingContext)"
 
 # relative SID of privileged groups

@@ -54,6 +54,8 @@ possibility of such damages
         Added the description to the Tier 0 / Tier 1 Kerberos Authentication policy
     Version 0.2.20250314
         The GMSA will be added to the enterprise admins group if the gmsa is not a member of the enterprise admins group
+    Version 0.2.20250320
+        Default name of the configuraitonfile changed from Tiering.config to TierLevelIsolation.config
         
 #>
 
@@ -204,7 +206,7 @@ function IsMemberOfEnterpriseAdmins{
 #####################################################################################################################################################################################
 #region  Constanst and default value
 #####################################################################################################################################################################################
-$ScriptVersion = "0.2.202500314"
+$ScriptVersion = "0.2.202500320"
 #The current domain contains the relevant Tier level groups
 $CurrentDomainDNS = (Get-ADDomain).DNSRoot
 $CurrentDomainDN  = (Get-ADDomain).DistinguishedName
@@ -243,7 +245,7 @@ $DefaultGMSAName = "TierLevel-mgmt"
 #Default script location path
 $ScriptTarget              = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts"
 #Default FQDN configuration file path
-$ConfigFile                = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts\Tiering.config"
+$ConfigFile                = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts\TierLevelIsolation.config"
 $EnablePrivilegeGroupCleanUP = $true
 #constantes
 $TaskSchedulerXML          = "ScheduledTasks.xml"
