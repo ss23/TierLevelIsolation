@@ -1,5 +1,3 @@
-# This is a BETA VERSION please let me know if there is any error
-
 # TierLevelIsolation
 ## Overview 
 This solution implements Tier Level isolation as described in the blog "Protection Tier 0 the modern way". It prepares your Active Directory forest to support Kerberos Authentication Policies, creating prerequisites to isolate Tier 0 or Tier 1 and automate the Tier 0 / Tier 1 user management. The Kerberos Authentication Policy ensure privileged accounts must use Kerberos as authentication protocol and can only request Kerberos TGT on predefined computers. 
