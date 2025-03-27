@@ -17,22 +17,20 @@ inability to use the sample scripts or documentation, even if Microsoft has been
 possibility of such damages
 
 Module Name: TierLevelIsolation
-Module Version: 0.1.20240825
+Module Version: 0.1.20250327
 Module GUID: 0b1c8d3e-4f2a-4b6c-9d5f-7a1b8e2c3d4e
 Module Description: This module provides functions to manage theconfiguraiton  TierLevelIsolation 
 
 Version History:
     0.1.20250315 - Initial version
+    0.1.20250327 - Added functions to manage the configuration of TierLevelIsolation, bug fixing
+                 - Add-TierLevelIsolationDomain support an array as import parameter
 
 #>
 
 #region Module Metadata
 # Module Name: TierLevelIsolation   
-# Module Version: 0.1.20250323
-# Module GUID: 0b1c8d3e-4f2a-4b6c-9d5f-7a1b8e2c3d4e
-# Module Description: This module provides functions to manage the configuration of TierLevelIsolation
-# Module Author: Andreas Lucas [MSFT]
-# Module Dependencies: ActiveDirectory, Microsoft.PowerShell.Utility
+
 # Module Prerequisites: PowerShell 5.1 or higher, Active Directory module for Windows PowerShell
 # Module Installation: Import-Module TierLevelIsolation.psd1
 # Module Usage:
@@ -54,21 +52,8 @@ Version History:
 #region Global variables
 $Global:DnsRoot = (Get-ADDomain).DNSRoot
 $global:configFile = "\\$DNSRoot\SYSVOL\$DNSRoot\scripts\TierLevelIsolation.config"
-#Inital configuration object
-$global:config = New-Object psobject
-$global:config | Add-Member -MemberType NoteProperty -Name Tier0ComputerPath       -Value @()
-$global:config | Add-Member -MemberType NoteProperty -Name Tier1ComputerPath       -Value @()
-$global:config | Add-Member -MemberType NoteProperty -Name Tier0ComputerGroup      -Value ""
-$global:config | Add-Member -MemberType NoteProperty -Name Tier1ComputerGroup      -Value ""
-$global:config | Add-Member -MemberType NoteProperty -Name Tier0ServiceAccountPath -Value @()
-$global:config | Add-Member -MemberType NoteProperty -Name Tier0UsersPath          -Value @()
-$global:config | Add-Member -MemberType NoteProperty -Name Tier1UsersPath          -Value @()
-$global:config | Add-Member -MemberType NoteProperty -Name T0KerbAuthPolName       -Value ""
-$global:config | Add-Member -MemberType NoteProperty -Name T1KerbAuthPolName       -Value ""
-$global:config | Add-Member -MemberType NoteProperty -Name Domains                 -Value @()
-$global:config | Add-Member -MemberType NoteProperty -Name scope                   -Value $null
-$global:config | Add-Member -MemberType NoteProperty -Name ProtectedUsers          -Value @()
-$global:config | Add-Member -MemberType NoteProperty -Name PrivilegedGroupsCleanUp -Value $false
+
+
 #endregion
 
 #.SYNOPSIS
@@ -123,18 +108,34 @@ function Get-TierLevelIsolationConfiguration {
         [Parameter(Mandatory = $false, Position = 0)]
         [string]$configFile = $global:configFile
     )
+    #Inital configuration object
+    $config = New-Object psobject
+    $config | Add-Member -MemberType NoteProperty -Name Tier0ComputerPath       -Value @()
+    $config | Add-Member -MemberType NoteProperty -Name Tier1ComputerPath       -Value @()
+    $config | Add-Member -MemberType NoteProperty -Name Tier0ComputerGroup      -Value ""
+    $config | Add-Member -MemberType NoteProperty -Name Tier1ComputerGroup      -Value ""
+    $config | Add-Member -MemberType NoteProperty -Name Tier0ServiceAccountPath -Value @()
+    $config | Add-Member -MemberType NoteProperty -Name Tier1ServiceAccountPath -Value @()
+    $config | Add-Member -MemberType NoteProperty -Name Tier0UsersPath          -Value @()
+    $config | Add-Member -MemberType NoteProperty -Name Tier1UsersPath          -Value @()
+    $config | Add-Member -MemberType NoteProperty -Name T0KerbAuthPolName       -Value ""
+    $config | Add-Member -MemberType NoteProperty -Name T1KerbAuthPolName       -Value ""
+    $config | Add-Member -MemberType NoteProperty -Name Domains                 -Value @()
+    $config | Add-Member -MemberType NoteProperty -Name scope                   -Value $null
+    $config | Add-Member -MemberType NoteProperty -Name ProtectedUsers          -Value @()
+    $config | Add-Member -MemberType NoteProperty -Name PrivilegedGroupsCleanUp -Value $false
     # Check if the config file exists
     if (Test-Path $configFile) {
         $CurrentConfig = Get-Content -Path $configFile -Raw | ConvertFrom-Json
-        foreach ($configItem in $global:config.PSObject.Properties) {
+        
+        foreach ($configItem in $config.PSObject.Properties) {
             if ($null -ne $CurrentConfig.PSObject.Properties[$configItem.Name]) {
-                    $global:config.PSObject.Properties[$configItem.Name].Value = $CurrentConfig.PSObject.Properties[$configItem.Name].Value
+                    $config.PSObject.Properties[$configItem.Name].Value = $CurrentConfig.PSObject.Properties[$configItem.Name].Value
             }
         }
-        return $config
-    } else {
-        Write-Warning "Config file not found: '$configFile'"
-    }
+        
+    } 
+    return $config
 }
 #.SYNOPSIS
 #   Writing the tier level isolation configuration
@@ -161,9 +162,6 @@ function Set-TierLevelIsolationConfiguration {
         $config
     )
     try {
-        Foreach ($configItem in $global:config.PSObject.Properties) {
-            $global:config.PSObject.Properties[$configItem.Name].Value = $config.PSObject.Properties[$configItem.Name].Value
-        }
         $config | ConvertTo-Json | Set-Content -Path $configFile -Force
     } catch {
         Write-Host "Failed to write configuration to file: $configFile $($Error[0])" -ForegroundColor Red
@@ -178,8 +176,6 @@ function Set-TierLevelIsolationConfiguration {
 #.PARAMETER Path
 #   The distinguishedname to the computer organizational unit to add. The can can be full qualified or just the OU part.
 #   If the path is not a valid OU, the function will return a warning.
-#.PARAMETER IgnoreNonExistenOU
-#   If set to true, the function will ignore the warning if the specified path does not exist.
 #.PARAMETER configFile
 #   The path to the configuration file. If not specified, the default location is used.
 #   The default location is: \\$DNSRoot\SYSVOL\$DNSRoot\scripts\TierLevelIsolation.config
@@ -187,7 +183,7 @@ function Set-TierLevelIsolationConfiguration {
 #   Add-TierLevelTierComputerPath -TierLevel "Tier0" -Path "OU=Computers,OU=Tier0,OU=Admin,DC=contoso,DC=com"
 #    Add the computer path to the Tier0 tier level.
 #.EXAMPLE
-#   Add-TierLevelTierComputerPath -TierLevel "Tier1" -Path "OU=Computers,OU=Tier1,OU=Admin,DC=contoso,DC=com" -IgnoreNonExistenOU $true
+#   Add-TierLevelTierComputerPath -TierLevel "Tier1" -Path "OU=Computers,OU=Tier1,OU=Admin,DC=contoso,DC=com" 
 #    Add the computer path to the Tier1 tier level and ignore the warning if the path does not exist.   
 function Add-TierLevelIsolationComputerPath {
     param (
@@ -197,8 +193,6 @@ function Add-TierLevelIsolationComputerPath {
         [Parameter(Mandatory = $true, Position = 1)]
         $Path,
         [Parameter(Mandatory = $false, Position = 2)]
-        [switch] $IgnoreNonExistenOU,
-        [Parameter(Mandatory = $false, Position = 3)]
         [string]$configFile = $global:configFile
     )
     #reading the configuration file
@@ -213,10 +207,8 @@ function Add-TierLevelIsolationComputerPath {
     } else {
         $OU = Get-ADOrganizationalUnit -Filter "DistinguishedName -like '$Path,DC=*'" -ErrorAction SilentlyContinue 
     }
-    if ($null -eq $OU -and !$IgnoreNonExistenOU) {
+    if ($null -eq $OU ) {
         Write-Warning "The specified path does not exist: $Path"
-        Write-Warning "Please check the path and try again or use the -IgnoreNonExistingOU switch." 
-        return
     }
     switch ($TierLevel) {
         "Tier0" { 
@@ -299,8 +291,7 @@ function Remove-TierLevelIsolationComputerPath {
 #.PARAMETER Path
 #   The distinguishedname to the user organizational unit to add. The can can be full qualified or just the OU part.
 #   If the path is not a valid OU, the function will return a warning.
-# .PARAMETER IgnoreNonExistenOU 
-#   If set to true, the function will ignore the warning if the specified path does not exist.
+
 #.PARAMETER configFile
 #   The path to the configuration file. If not specified, the default location is used.
 #   The default location is: \\$DNSRoot\SYSVOL\$DNSRoot\scripts\TierLevelIsolation.config
@@ -308,28 +299,28 @@ function Remove-TierLevelIsolationComputerPath {
 #   Add-TierLevelUserPath -TierLevel "Tier0" -Path "OU=Users,OU=Tier0,OU=Admin"
 #    Add the user path to the Tier0 tier level.
 # .EXAMPLE  
-#   Add-TierLevelUserPath -TierLevel "Tier1" -Path "OU=Users,OU=Tier1,OU=Admin,DC=contoso,DC=com" -IgnoreNonExistenOU $true
+#   Add-TierLevelUserPath -TierLevel "Tier1" -Path "OU=Users,OU=Tier1,OU=Admin,DC=contoso,DC=com" 
 function Add-TierLevelIsolationUserPath {
     param (
         [Parameter(Mandatory = $true, Position = 0)]
         [ValidateSet("Tier0", "Tier1")]
         [string]$TierLevel,
         [Parameter(Mandatory = $true, Position = 1)]
-        $OU,
+        [string]$OU,
         [Parameter(Mandatory = $false, Position = 2)]
         [string]$configFile = $global:configFile
     )
     
     $config = Get-TierLevelIsolationConfiguration $configFile 
     if ($OU -like "*DC=*"){
-        $DNSDomain = ConvertFrom-DN2Dns -DistinguishedName $Path
+        $DNSDomain = ConvertFrom-DN2Dns -DistinguishedName $OU
         if ($null -eq $DNSDomain){
             Write-Warning "The specified domain does not exist: $OU"
             return
         }
-        $Path = Get-ADOrganizationalUnit -Filter "DistinguishedName -eq '$Path'" -ErrorAction SilentlyContinue -Server $DnsDomain
+        $Path = Get-ADOrganizationalUnit -Filter "DistinguishedName -eq '$OU'" -ErrorAction SilentlyContinue -Server $DnsDomain
     } else {
-        $Path = Get-ADOrganizationalUnit -Filter "DistinguishedName -like '$Path,DC=*'" -ErrorAction SilentlyContinue 
+        $Path = Get-ADOrganizationalUnit -Filter "DistinguishedName -like '$OU,DC=*'" -ErrorAction SilentlyContinue 
     }
     if ($null -eq $Path) {
         Write-Host "The specified path does not exist: $OU" -ForegroundColor Yellow
@@ -452,22 +443,24 @@ function Set-TierLevelIsolationKerberosAuthenticationPolicy{
 #    Add the domains to the configuration.
 function Add-TierLevelIsolationDomain{
     param (
-        [Parameter(Mandatory = $true, Position = 0)]
+        [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true)]
         [string]$Domain,
         [Parameter(Mandatory = $false, Position = 1)]
         [string]$configFile  = $global:configFile
     )
-    
-    $config = Get-TierLevelIsolationConfiguration $configFile 
-    if ((Get-ADForest).Domains -notcontains $Domain) {
-        Write-Host "The specified domain does not exist: $Domain" -ForegroundColor Red
+    process{
+        $config = Get-TierLevelIsolationConfiguration $configFile 
+        
+        if ((Get-ADForest).Domains -notcontains $Domain) {
+            Write-Host "The specified domain does not exist: $Domain" -ForegroundColor Red
+            return
+        }
+        if ($config.Domains -notcontains $domain) {
+            $config.Domains += $domain
+            Set-TierLevelIsolationConfiguration    -configFile $configFile -config $config
+        }
         return
     }
-    if ($config.Domains -notcontains $domain) {
-        $config.Domains += $domain
-    }
-    Set-TierLevelIsolationConfiguration    -configFile $configFile -config $config
-    return
 }
 #.SYNOPSIS
 #   Remove a Domain from the Tier Level Isolation configuration

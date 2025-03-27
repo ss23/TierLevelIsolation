@@ -328,7 +328,8 @@ foreach ($Domain  in $config.Domains) {
                 Foreach ($OU in $config.Tier1ComputerPath){
                     if ($OU -notlike "*,DC=*"){ $OU= "$OU,$DomainDN"}
                     if ($OU -like "*,$DomainDN"){
-                        if ($null -eq (Get-ADObject -Filter "DistinguishedName -eq '$OU'" -Server $Domain)){                                Write-Log "Missing Tier 1 computer OU in $DomainDN" -Severity Warning -EventID 1400
+                        if ($null -eq (Get-ADObject -Filter "DistinguishedName -eq '$OU'" -Server $Domain)){
+                                Write-Log "Missing Tier 1 computer OU $OU in $DomainDN" -Severity Warning -EventID 1400
                             } else {
                                 Foreach ($Computer in (Get-ADComputer -Filter * -SearchBase $OU -Server $Domain)){
                                     if ($Tier1ComputerGroup.member -notcontains $computer.DistinguishedName){
