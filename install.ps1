@@ -61,7 +61,11 @@ possibility of such damages
         Bug if in the new-TierLevelOU function
         Installation of TierLevelIsolation module
         The script has now a parameter to install the TierLevelIsolation module only.
-        
+    Version 0.2.20250331
+        The group policy will now be imported instead of creating a new one. This will ensure that any changes to the Schedule tasks will be applied to the new created GPO.
+        The context switch task will be created as a scheduled task in the GPO. 
+        The user schedule tasks will now be disabled in the group policy. They will not shown up in the local scheduler until they are enabled in the group policy
+        Bugfix in the module
 #>
 param(
     [switch]$InstallPSModuleOnly
@@ -207,6 +211,26 @@ function New-GMSA {
     Return $retval
 }
 
+<#
+.SYNOPSIS
+    Check if the current user is member of the Enterprise Admins group
+.DESCRIPTION
+    This function checks if the current user is a member of the Enterprise Admins group. This is required to access the configuration partition of the Active Directory forest.
+    The function checks the SID of the Enterprise Admins group (-519) in the user's group membership.
+    The function returns $true if the user is a member of the Enterprise Admins group and $false otherwise.
+.OUTPUTS
+    $true
+        if the user is a member of the Enterprise Admins group
+    $false
+        if the user is not a member of the Enterprise Admins group or if an error occurs while checking the group membership.
+.EXAMPLE
+    $isMember = IsMemberOfEnterpriseAdmins
+    if ($isMember) {
+        Write-Host "User is a member of the Enterprise Admins group."
+    } else {
+        Write-Host "User is not a member of the Enterprise Admins group."
+    }
+#>
 function IsMemberOfEnterpriseAdmins{
     $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     if ($currentUser.Groups -like "*-519"){
@@ -216,26 +240,47 @@ function IsMemberOfEnterpriseAdmins{
     }
 }
 
+<#
+.SYNOPSIS
+    Get the selected domains from the user input
+.DESCRIPTION
+    This function prompts the user to select one or more domains from a list of available domains in the Active Directory forest. The user can select multiple domains by entering their indices separated by commas.
+    If the user does not provide any input, all domains will be selected by default.
+.PARAMETER Domains
+    An array of domain names to be displayed for selection. This parameter is mandatory and should be provided as an array of strings.
+.OUTPUTS
+    An array of selected domain names based on the user's input. If the user selects multiple domains, they will be returned as an array. If no input is provided, all domains will be returned.
+.EXAMPLE
+    $Domains = Get-ADForest | Select-Object -ExpandProperty Domains
+    $SelectedDomains = Get-SelectedDomains -Domains $Domains
+    Write-Host "Selected domains: $($SelectedDomains -join ', ')"
+    # This will display the selected domains based on user input. If the user selects multiple domains, they will be displayed as a comma-separated list. If the user selects all domains, it will display all domains in the forest.
+#>
 function Get-SelectedDomains {
     param(
         [Parameter (Mandatory, Position = 0)]
         [string[]]$Domains
     )
+    # loop to display the list of domains until the user selects at least one valid domain or all domains
     do {
+        # Show all available domains with their indices for selection
         For ($i = 0; $i -lt $Domains.count; $i++){
             Write-Host "[$i] $($Domains[$i])"
         }
         Write-Host "[$($i)] all domains"
-        $strReadIndex  = Read-Host "Select domains (you can select multiple domain separated by ,)"
-
+        # Prompt the user to select domains by entering their indices separated by commas
+        $strReadIndex  = Read-Host "Select domains (you can select multiple domain separated by ',' [$i])"
+        if ($strReadIndex -eq '') {
+            $strReadIndex = "$i" #select all domains if no input is provided
+        }
         $SelectedDomains = @()
         try {           
-            foreach ($DomainIndex in $strReadIndex -split ","){
-                $DomainIndex = [int]$DomainIndex.Trim()
+            foreach ($DomainIndex in $strReadIndex -split ","){ #split the input by commas to allow multiple selections
+                $DomainIndex = [int]$DomainIndex.Trim() # Trim any whitespace and convert to integer, if the input is not a valid integer, it will throw an exception
                 if ($DomainIndex -eq  $Domains.count){
                     return $Domains
                 } else {
-                    if ($DomainIndex -ge 0 -and $DomainIndex -le $Domains.Count){
+                    if ($DomainIndex -ge 0 -and $DomainIndex -le $Domains.Count){ # Check if the index is within the valid range
                         $SelectedDomains += $Domains[$DomainIndex]
                     } else {
                         Write-Host "Invalid value $DomainIndex" -ForegroundColor Red
@@ -244,7 +289,6 @@ function Get-SelectedDomains {
             }
         }
         catch {
-                <#Do this if a terminating exception happens#>
                 Write-Host "Invalid value $DomainIndex" -ForegroundColor Red
         }
     } while ($SelectedDomains.count -eq 0)
@@ -254,24 +298,19 @@ function Get-SelectedDomains {
 #####################################################################################################################################################################################
 #region  Constanst and default value
 #####################################################################################################################################################################################
-$ScriptVersion = "0.2.202500327"
+$ScriptVersion = "0.2.202500331"
 #The current domain contains the relevant Tier level groups
 $CurrentDomainDNS = (Get-ADDomain).DNSRoot
-$CurrentDomainDN  = (Get-ADDomain).DistinguishedName
 $CurrentDC        = (Get-ADDomainController -Discover -Service GlobalCatalog -NextClosestSite ).Name
 
 #This Description will be added to the Tier 0 / Tier 1 Commputers group if it will be created during this setup. This Description can't be changed during the setup. 
-#But i can be changed after the setup
 $DescriptionT0ComputerGroup = "This group contains all Tier 0 member computer. This group will be used for the Kerberos Authentication Policy claim"
 $DescriptionT1ComputerGroup = "This group contains any Tier 1 member computer. This group will be used for the Kerberos Authentication Policy claim"
 #This Description will be added to the Group Managemd Service Account if it is required in teh multi-domain forest mode. This Description can't be changed during the setup. 
-#But i can be changed after the setup 
 $DescriptionGMSA = "This Group Managed service account is used to manage user accounts and groups impacted by the Tier Level Model"
 #This Description will be added to the Tier 0 / Tier 1 Kerberos Authentication Policy if they doesn't exists.This Description can't be changed during the setup. 
-#But i can be changed after the setup
 $DescriptionTier0CKerberosAuthenticationPolicy = "This policy aims to isolate Tier 0 systems to ensure the security and integrity of critical IT infrastructures. Users assigned this policy can only log in to computers that are members of the 'Enterprise Domain Controller' group or the 'Tier 0 Server'group. This ensures that only authorized users have access to the most sensitive systems within the organization."
 $DescriptionTier1CKerberosAuthenticationPolicy = "This policy aims to isolate Tier 1 systems to ensure the security and integrity of IT infrastructures. Users assigned this policy can only log in to computers that are members of the 'Tier 1 Server' group or 'Enterprise Domain Controller' group or the 'Tier 0 Server'group. This ensures that only authorized users have access to the most sensitive systems within the organization."
-
 #Default values for the Kerberos Authenticaiton policy
 $DefaultT0KerbAuthPolName = "Tier 0 restriction"
 $DefaultT1KerbAuthPolName = "Tier 1 restriction"
@@ -283,8 +322,6 @@ $DefaultT0Computers          =           "OU=Server,OU=Tier 0,OU=Admin"
 $DefaultT0ServiceAccountPath = "OU=Service Accounts,OU=Tier 0,OU=Admin"
 $DefaultT1ServiceAccountPath = "OU=Service Accounts,OU=Tier 1,OU=Admin"
 $DefaultT1Computers          =           "OU=Server,OU=Tier 1,OU=Admin"
-
-
 #Default name of the Claim groups
 $DefaultT0ComputerGroupName = "Tier 0 server"
 $DefaultT1ComputerGroupName = "Tier 1 server"
@@ -294,13 +331,10 @@ $DefaultGMSAName = "TierLevel-mgmt"
 #Default script location path
 $ScriptTarget              = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts"
 #Default FQDN configuration file path
-$ConfigFile                = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts\TierLevelIsolation.config"
+$ConfigFile                = "$ScriptTarget\TierLevelIsolation.config"
 #constantes
-$TaskSchedulerXML          = "ScheduledTasks.xml"
 $GPOName = "Tier Level Isolation"
-
-
-#$RegExOUPattern = "((OU|CN)=[^,]+,)*(OU|CN)=[^,]+$"
+$GPOBackupID = "68e9eff4-48c4-420d-a229-f1acd8c75c6b"
 $RegExDNDomain = "(?i)(DC=[^,]+,)*DC=.+$"
 $DefaultDomainControllerPolicy = "6AC1786C-016F-11D2-945F-00C04FB984F9"
 $DefaultDomainPolicy = "31B2F340-016D-11D2-945F-00C04FB984F9"
@@ -351,7 +385,12 @@ try{
     if ($InstallPSModuleOnly){
         exit
     }
-    Import-module TierLevelIsolation
+    if ($null -eq (Get-Module -Name TierLevelIsolation)){
+        Write-Host "Loading the TierLevelIsolation module" -ForegroundColor Green
+        Import-module TierLevelIsolation -ErrorAction Stop
+    } else {
+        Write-Host "The TierLevelIsolation module is already loaded" -ForegroundColor Green
+    }
 } catch {
     Write-Host "Failed to install the TierLevelIsolation module" -ForegroundColor Red
     Write-Host $Error[0].Exception.Message -ForegroundColor Red
@@ -466,14 +505,6 @@ if ($strReadHost -like "n*"){
 } else {
     Set-TierLevelPrivilegedGroupsCleanUpState $true
 }
-if ($Domains.count -gt 1){
-    Write-Host "You are in a multi-domain forest mode. Please provide the name of the group managed service account (GMSA) used to manage the user and group impacted by the Tier Level isolation"
-    $strReadHost = Read-Host "Provide the GMSA name ($DefaultGMSAName)"}
-    if ($strReadHost -eq ''){
-        $GMSAName = $DefaultGMSAName
-    } else {
-        $GMSAName = $strReadHost
-    }
     
 #endregion
 
@@ -583,7 +614,7 @@ foreach ($domain in $config.Domains){
 }
 #endregion
 #Tier 0 server group is needed in any scope
-$Tier0ComputerGroup = Get-ADGroup -Filter "SamAccountName -eq '$($config.Tier0ComputerGroup)'"
+$Tier0ComputerGroup = Get-ADGroup -Filter "SamAccountName -eq '$($config.Tier0ComputerGroup)'" 
 $Tier1ComputerGroup = Get-ADGroup -Filter "SamAccountName -eq '$($config.Tier1ComputerGroup)'"
 $GroupWaitCounter = 0 #If the universal group is create via a DC who is not a GC, the group is not visible in the forest until the GC is replicated
 try {
@@ -745,73 +776,63 @@ catch {
 #read the schedule task template from the current directory
 try {
 
-    $ScheduleTaskRaw = Get-Content ".\ScheduledTasksTemplate.xml"
+    $ScheduleTaskRaw = Get-Content "$PWD\GPO\{$GPOBackupID}\DomainSysvol\GPO\Machine\Preferences\ScheduledTasks\ScheduledTasks.xml" -Raw -ErrorAction Stop
     $ScheduleTaskRaw = $ScheduleTaskRaw.Replace("#ScriptPath", $ScriptTarget) 
     $ScheduleTaskRaw = $ScheduleTaskRaw.Replace("#GMSAName", $GMSAName)
     [XML]$ScheduleTaskXML = $ScheduleTaskRaw
-    #Enable Claim Support on Domain Controllers. 
-    #Write this setting to the default domain controller policy  
-    foreach ($domain in $config.Domains){
-        $RegKey = Get-GPRegistryValue -Domain $domain -Guid $DefaultDomainControllerPolicy -Key $KDCEnableClaim.Key -ErrorAction SilentlyContinue
-        if ( $RegKey.value -ne 1){
-            Set-GPRegistryValue @KDCEnableClaim        -Domain $domain -Guid $DefaultDomainControllerPolicy
-        }
-        $RegKey = Get-GPRegistryValue -Domain $Domain -Guid $DefaultDomainControllerPolicy -key $ClientKerberosAmoring.Key -ErrorAction SilentlyContinue
-        if ($RegKey.value -ne 1){
-            Set-GPRegistryValue @ClientKerberosAmoring -Domain $domain -Guid $DefaultDomainControllerPolicy
-        }
-        $RegKey = Get-GPRegistryValue -Domain $Domain -Guid $DefaultDomainPolicy -key $ClientKerberosAmoring.Key -ErrorAction SilentlyContinue
-        if ($RegKey.value -ne 1){
-            Set-GPRegistryValue @ClientKerberosAmoring -Domain $domain -Guid $DefaultDomainPolicy
-        }
-    }
-    #Create new Group Policy if required to manage Tier level isolation
-    $oGPO = Get-GPO -Name $GPOName -ErrorAction SilentlyContinue
-    if ($null -eq $oGPO){
-        $oGPO = New-gpo -Name $GPOName -Comment "Tier Level enforcement group policy. " -ErrorAction SilentlyContinue
-        $CSEGuid = "[{00000000-0000-0000-0000-000000000000}{CAB54552-DEEA-4691-817E-ED4A4D1AFC72}][{AADCED64-746C-4633-A97C-D61349046527}{CAB54552-DEEA-4691-817E-ED4A4D1AFC72}]"
-        Set-ADObject -Identity "CN={$($oGPO.Id.Guid)},CN=Policies,CN=System,$CurrentDomainDN" -Add @{'gPCMachineExtensionNames' = $CSEGuid}
-    }
-    $GPPath = "\\$((Get-ADDomain).DNSRoot)\SYSVOL\$((Get-ADDomain).DNSRoot)\Policies\{$($oGPO.ID)}\Machine\Preferences\ScheduledTasks"
-    if (!(Test-Path "$GPPath")){
-        New-Item -ItemType Directory $GPPath | Out-Null
-    }
-    switch ($scope){
-        "Tier-1"{
-            #Remove the Tier 0 server and user management tasks
-            "Remove Tier 0 tasks"
-            $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{B1168190-7E2C-4177-9391-B1FFBCDF4774}'}
-            $task.ParentNode.RemoveChild($Task) | Out-Null
-            $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{A26FE3E3-9BD7-4172-92DF-748622701717}'}
-            $task.ParentNode.RemoveChild($Task) | Out-Null
-        }
+    switch ($scope){ 
         "Tier-0" {
-            #Remvoe the Tier1 comuputer and user management tasks
-            "Remove Tier 1 tasks"
+            #Disalbe the Tier 0 server management tasks. We will only manage the Tier 1 server and user management tasks
             $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{D9E485BC-145A-47BC-B6C0-A3457662E26A}'}
-            $task.ParentNode.RemoveChild($Task) | Out-Null
-            $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{1CD57939-879D-44F9-A38F-7C140A58F041}'}
-            $task.ParentNode.RemoveChild($Task) | Out-Null
-        }
+            $Task.disabled = "1"  
+            #Disableing user context task         
+            $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{832DD5A2-5AA7-4F99-8663-0D4855E5DA56}'}
+            $Task.disabled = "1"
+          }
+        "Tier-1" {
+            #Disabling Tier 0 server management tasks. We will only manage the Tier 1 server and user management tasks
+            $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{B1168190-7E2C-4177-9391-B1FFBCDF4774}'}
+            $Task.disabled = "1"
+            #Disableing user context task
+            $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{832DD5A2-5AA7-4F99-8663-0D4855E5DA56}'}
+            $Task.disabled = "1"
+          }
     }
-    if ($config.Domains.Count -eq 1){
-        $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{BCB5982B-9E75-4A3B-8E10-C83565DFFCE4}'}
-        $task.ParentNode.RemoveChild($Task) | Out-Null
+    if ($GMSAName -eq ""){
+        $Task = $ScheduleTaskXML.ScheduledTasks.TaskV2 | Where-Object {$_.UID -eq '{832DD5A2-5AA7-4F99-8663-0D4855E5DA56}'}
+        $Task.disabled = "1" #disable the user context task if no GMSA is used. This task is used to manage the user context for the Tier 0 / Tier 1 users
     }
-    $ScheduleTaskXML.Save("$GPPath\$TaskSchedulerXML")
+    $ScheduleTaskXML.Save("$PWD\GPO\{$GPOBackupID}\DomainSysvol\GPO\Machine\Preferences\ScheduledTasks\ScheduledTasks.xml")
+    Import-GPO -BackupId $GPOBackupID -Path "$PWD\GPO" -CreateIfNeeded -TargetName $GPOName
+    $oGPO = Get-GPO -Name $GPOName
     $LinkedTieringGP = (Get-GPInheritance -Target (Get-ADDomain).DomainControllersContainer).GpoLinks | Where-Object {$_.GpoId -eq "$($oGPO.ID)"}
     if ($Null -eq $LinkedTieringGP){
         $oGPO | New-GPLink -Target (Get-ADDomain).DomainControllersContainer -LinkEnabled Yes
         Write-Host "$GPOName Group Policy is linked to Domain Controllers OU" -ForegroundColor Yellow -BackgroundColor Blue
-        Write-Host "Do not forget to enable Tier 0 user management task" -ForegroundColor Yellow
+        Write-Host "Do not forget to enable user management tasks" -ForegroundColor Yellow
         Write-Host "ONCE all Tier 0 server are members of the $($config.Tier0ComputerGroup) group AND have been rebooted you are ready to enable the 'Tier 0 User Management' Scheduled Task. Also, be sure to have a proper Breakglass account and process in place."
     } else {
         if (!$LinkedTieringGP.Enabled){
-            Write-Host "$GPOName group policy is linked to $((Get-ADDomain).DomainControllersContainer) but not enabled" -ForegroundColor Yellow
+            Write-Host "$GPOName group policy is linked to $((Get-ADDomain).DomainControllersContainer)" -ForegroundColor Yellow
             Write-Host "Validate the status for the Schedule tasks before you enbaled the group policy link" -ForegroundColor Yellow
         }
     }
-
+    #Enable Claim Support on Domain Controllers. 
+    #Write this setting to the default domain controller policy  
+    foreach ($domain in $config.Domains){
+        $RegKey = Get-GPRegistryValue -Domain $domain -Guid $DefaultDomainControllerPolicy -Key $KDCEnableClaim.Key  -ErrorAction SilentlyContinue
+        if ( $RegKey.value -ne 1){
+            Set-GPRegistryValue @KDCEnableClaim -Domain $domain -Guid $DefaultDomainControllerPolicy 
+        }
+        $RegKey = Get-GPRegistryValue -Domain $Domain -Guid $DefaultDomainControllerPolicy -key $ClientKerberosAmoring.Key  -ErrorAction SilentlyContinue
+        if ($RegKey.value -ne 1){
+            Set-GPRegistryValue @ClientKerberosAmoring -Domain $domain -Guid $DefaultDomainControllerPolicy 
+        }
+        $RegKey = Get-GPRegistryValue -Domain $Domain -Guid $DefaultDomainPolicy -key $ClientKerberosAmoring.Key -ErrorAction SilentlyContinue
+        if ($RegKey.value -ne 1){
+            Set-GPRegistryValue @ClientKerberosAmoring -Domain $domain -Guid $DefaultDomainPolicy 
+        }
+    }
 } 
 catch{
     Write-Host $error[0]

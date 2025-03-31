@@ -25,6 +25,9 @@ Version History:
     0.1.20250315 - Initial version
     0.1.20250327 - Added functions to manage the configuration of TierLevelIsolation, bug fixing
                  - Add-TierLevelIsolationDomain support an array as import parameter
+    0.1.20250331 - Change the parameter from Path to OU on Add-TierLevelIsolationComputerPath, Add-TierLevelIsolationUserPath, Add-TierLevelIsolationServiceAccountPath to clarify that it is an Organizational Unit (OU) path.
+                 - Added validation to check if the specified OU exists in Active Directory before adding it to the configuration.
+                 - Added error handling for invalid inputs and exceptions when retrieving OUs or groups from Active Directory.
 
 #>
 
@@ -191,32 +194,32 @@ function Add-TierLevelIsolationComputerPath {
         [ValidateSet("Tier0", "Tier1")]
         [string]$TierLevel,
         [Parameter(Mandatory = $true, Position = 1)]
-        $Path,
+        $OU,
         [Parameter(Mandatory = $false, Position = 2)]
         [string]$configFile = $global:configFile
     )
     #reading the configuration file
     $config = Get-TierLevelIsolationConfiguration $configFile
-    if ($Path -like "*DC=*"){
-        $DNSDomain = ConvertFrom-DN2Dns -DistinguishedName $Path
+    if ($OU -like "*DC=*"){
+        $DNSDomain = ConvertFrom-DN2Dns -DistinguishedName $OU
         if ($null -eq $DNSDomain){
-            Write-Warning "The specified domain does not exist: $Path"
+            Write-Host "The specified domain does not exist: $OU" -ForegroundColor Yellow
             return
         }
-        $OU = Get-ADOrganizationalUnit -Filter "DistinguishedName -eq '$Path'" -ErrorAction SilentlyContinue -Server $DnsDomain
+        $oOU = Get-ADOrganizationalUnit -Filter "DistinguishedName -eq '$OU'" -ErrorAction SilentlyContinue -Server $DnsDomain
     } else {
-        $OU = Get-ADOrganizationalUnit -Filter "DistinguishedName -like '$Path,DC=*'" -ErrorAction SilentlyContinue 
+        $oOU = Get-ADOrganizationalUnit -Filter "DistinguishedName -like '$OU,$((Get-ADDomain).DistinguishedName)'" -ErrorAction SilentlyContinue 
     }
-    if ($null -eq $OU ) {
-        Write-Warning "The specified path does not exist: $Path"
+    if ($null -eq $oOU ) {
+        Write-Host "The specified path does not exist: $OU" -ForegroundColor Yellow
     }
     switch ($TierLevel) {
         "Tier0" { 
             if ($null -eq $config.Tier0ComputerPath) {
                 $config.Tier0ComputerPath = @()
             }
-            if ($config.Tier0ComputerPath -notcontains $Path) {
-                $config.Tier0ComputerPath += $Path
+            if ($config.Tier0ComputerPath -notcontains $OU) {
+                $config.Tier0ComputerPath += $OU
             }
             break
         }
@@ -224,8 +227,8 @@ function Add-TierLevelIsolationComputerPath {
             if ($null -eq $config.Tier1ComputerPath ) {
                 $config.Tier1ComputerPath = @()
             }
-            if ($config.Tier1ComputerPath -notcontains $Path) {
-                $config.Tier1ComputerPath += $Path
+            if ($config.Tier1ComputerPath -notcontains $OU) {
+                $config.Tier1ComputerPath += $OU
             }
             break
         }
@@ -253,7 +256,7 @@ function Remove-TierLevelIsolationComputerPath {
         [ValidateSet("Tier0", "Tier1")]
         [string]$TierLevel,
         [Parameter(Mandatory = $true, Position = 1)]
-        $Path,
+        $OU,
         [Parameter(Mandatory = $false, Position = 2)]
         [string]$configFile = $global:configFile
     )
@@ -261,19 +264,19 @@ function Remove-TierLevelIsolationComputerPath {
     $config = Get-TierLevelIsolationConfiguration $configFile 
     switch ($TierLevel) {
         "Tier0" { 
-            if ($config.Tier0ComputerPath -contains $Path) {
-                $config.Tier0ComputerPath = @($config.Tier0ComputerPath | Where-Object { $_ -ne $Path })
+            if ($config.Tier0ComputerPath -contains $OU) {
+                $config.Tier0ComputerPath = @($config.Tier0ComputerPath | Where-Object { $_ -ne $OU })
             } else {
-                Write-Host "The specified path does not exist in the Tier0 configuration: $Path" -ForegroundColor Yellow
+                Write-Host "The specified path does not exist in the Tier0 configuration: $OU" -ForegroundColor Yellow
                 return
             }
             break
         }
         "Tier1" {
-            if ($config.Tier1ComputerPath -contains $Path) {
-                $config.Tier1ComputerPath = @($config.Tier1ComputerPath | Where-Object { $_ -ne $Path})
+            if ($config.Tier1ComputerPath -contains $OU) {
+                $config.Tier1ComputerPath = @($config.Tier1ComputerPath | Where-Object { $_ -ne $OU})
             } else {
-                Write-Host "The specified path does not exist in the Tier1 configuration: $Path" -ForegroundColor Yellow
+                Write-Host "The specified path does not exist in the Tier1 configuration: $OU" -ForegroundColor Yellow
                 return
             }
             break
@@ -315,12 +318,12 @@ function Add-TierLevelIsolationUserPath {
     if ($OU -like "*DC=*"){
         $DNSDomain = ConvertFrom-DN2Dns -DistinguishedName $OU
         if ($null -eq $DNSDomain){
-            Write-Warning "The specified domain does not exist: $OU"
+            Write-Host "The specified domain does not exist: $OU" -ForegroundColor Yellow
             return
         }
         $Path = Get-ADOrganizationalUnit -Filter "DistinguishedName -eq '$OU'" -ErrorAction SilentlyContinue -Server $DnsDomain
     } else {
-        $Path = Get-ADOrganizationalUnit -Filter "DistinguishedName -like '$OU,DC=*'" -ErrorAction SilentlyContinue 
+        $Path = Get-ADOrganizationalUnit -Filter "DistinguishedName -like '$OU,$((Get-ADDomain).DistinguishedName)'" -ErrorAction SilentlyContinue 
     }
     if ($null -eq $Path) {
         Write-Host "The specified path does not exist: $OU" -ForegroundColor Yellow
@@ -631,12 +634,12 @@ function Add-TierLevelIsolationServiceAccountPath {
     if ($OU -like "*DC=*"){
         $DNSDomain = ConvertFrom-DN2Dns -DistinguishedName $OU
         if ($null -eq $DNSDomain){
-            Write-Warning "The specified domain does not exist: $OU"
+            Write-Host "The specified domain does not exist: $OU" -ForegroundColor Yellow
             return
         }
         $Path = Get-ADOrganizationalUnit -Filter "DistinguishedName -eq '$OU'" -ErrorAction SilentlyContinue -Server $DnsDomain
     } else {
-        $Path = Get-ADOrganizationalUnit -Filter "DistinguishedName -like '$OU,DC=*'" -ErrorAction SilentlyContinue 
+        $Path = Get-ADOrganizationalUnit -Filter "DistinguishedName -like '$OU,$((Get-ADDomain).DistinguishedName)'" -ErrorAction SilentlyContinue 
     }
     if ($null -eq $Path) {
         Write-Host "The specified path does not exist: $OU" -ForegroundColor Yellow
