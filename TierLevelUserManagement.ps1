@@ -51,6 +51,10 @@ possibility of such damages
         New debug information added
         Fixed a bug adding the user to the protected users group. The script will now check if the user is already a member of the protected users group
         and add the user to the protected users group.
+    Version 0.2.20250320
+        Default configuration file name changed from tiering.config to TierLevlIsolation.config
+    Version 0.2.20250327
+        Bug fix: The parameter $configFile default value fixed
 
 #>
 param(
@@ -346,13 +350,13 @@ function ConvertTo-DistinguishedNames{
 # Main program starts here
 ##############################################################################################################################
 #script Version 
-$ScriptVersion = "0.2.20250314"
+$ScriptVersion = "0.2.20250327"
 
 #region constantes
 $config = $null
 #the current domain must contains the Tier level user groups
 $CurrentDomainDNS = (Get-ADDomain).DNSRoot
-$DefaultConfigFile = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts\Tiering.config"
+$DefaultConfigFile = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts\TierLevelIsolation.config"
 $ADconfigurationPath = "CN=Tier Level Isolation,CN=Services,$((Get-ADRootDSE).configurationNamingContext)"
 
 # relative SID of privileged groups
@@ -381,7 +385,6 @@ Write-Log -Message "Tier Isolation user management $Scope version $ScriptVersion
 #region read configuration
 try{
     if ($ConfigFile -eq '') {
-        Write-host "AD config lesen noch implementieren $ADconfigurationPath" -ForegroundColor Red -BackgroundColor DarkGray
         #last resort if the configfile paramter is not available and no configuration is stored in the AD. check for the dafault configuration file
         if ($null -eq $config){
             if ((Test-Path -Path $DefaultConfigFile)){
