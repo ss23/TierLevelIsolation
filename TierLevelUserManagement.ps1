@@ -55,6 +55,8 @@ possibility of such damages
         Default configuration file name changed from tiering.config to TierLevlIsolation.config
     Version 0.2.20250327
         Bug fix: The parameter $configFile default value fixed
+    Version 0.2.20250410
+        Bug Fix in ValidateAndRemoveUser function. the function now recognize the relative DN of privielged users
 
 #>
 param(
@@ -255,6 +257,25 @@ function validateAndRemoveUser{
         [string[]] $ServiceAccountPath
 
     )
+    #if the privileged OU
+    $tempPrivOU= @()
+    foreach ($OU in $PrivilegedOU){
+        if ($OU -like "*,DC=*"){
+            $tempPrivOU += $OU
+        } else {
+            $tempPrivOU += "$OU,DC="
+        }
+    }
+    $PrivilegedOU = $tempPrivOU
+    $tempPrivOU= @()
+    foreach ($OU in $ServiceAccountPath){
+        if ($OU -like "*,DC=*"){
+            $tempPrivOU += $OU
+        } else {
+            $tempPrivOU += "$OU,DC="
+        }
+    }
+    $ServiceAccountPath = $tempPrivOU
     $Group = Get-ADGroup -Identity $SID -Properties members,canonicalName -Server $DomainDNSName 
     #validate the SID exists
     if ($null -eq $Group){
@@ -279,9 +300,9 @@ function validateAndRemoveUser{
 #                    ($member.distinguishedName -notlike "*,$PrivilegedServiceAccountOUPath*") -and ` #ignore if the member is located in the service account OU
 #                    ($excludeUser              -notlike "*$($member.DistinguishedName)*" )           #ignore if the member is in the exclude user list
                     ){
-                        if (($PrivilegedOU | Where-Object {$member.DistinguishedName -like "*$_"} ).Count -eq 0){
+                        if (($PrivilegedOU | Where-Object {$member.DistinguishedName -like "*$_*"} ).Count -eq 0){
                             #the user is not located in the privileged OU check the user is located in the service account OU
-                            if (($ServiceAccountPath | Where-Object {$member.DistinguishedName -like "*$_"}).count -eq 0){
+                            if (($ServiceAccountPath | Where-Object {$member.DistinguishedName -like "*$_*"}).count -eq 0){
                                 #The user is not located in the service account OU. Try to remove the user from the current group
                                 try{
                                     Write-Log -Message "remove $member from $($Group.DistinguishedName)" -Severity Warning -EventID 2201
@@ -301,7 +322,7 @@ function validateAndRemoveUser{
                                 Write-Log -Message "The user $($member.DistinguishedName) is located in a Service account OU and will not be removed from the privileged groups $($Group.Distiguishedname)" -EventID 2205 -Severity Debug
                             }
                         } else {
-                            Write-Log -Message "The user $($member.Distiguishedname) is member of a privileged user OU" -Severity Debug -EventID 2206
+                            Write-Log -Message "The user $($member.Distinguishedname) is member of a privileged user OU" -Severity Debug -EventID 2206
                         }
                     }
                 }
@@ -350,14 +371,14 @@ function ConvertTo-DistinguishedNames{
 # Main program starts here
 ##############################################################################################################################
 #script Version 
-$ScriptVersion = "0.2.20250327"
+$ScriptVersion = "0.2.20250410"
 
 #region constantes
 $config = $null
 #the current domain must contains the Tier level user groups
 $CurrentDomainDNS = (Get-ADDomain).DNSRoot
 $DefaultConfigFile = "\\$CurrentDomainDNS\SYSVOL\$CurrentDomainDNS\scripts\TierLevelIsolation.config"
-$ADconfigurationPath = "CN=Tier Level Isolation,CN=Services,$((Get-ADRootDSE).configurationNamingContext)"
+#$ADconfigurationPath = "CN=Tier Level Isolation,CN=Services,$((Get-ADRootDSE).configurationNamingContext)"
 
 # relative SID of privileged groups
 $PrivlegeDomainSid = @(
@@ -467,7 +488,7 @@ foreach ($Domain in $config.Domains){
     }
     #endregion
     #if the PrivilegedGroupsCleanUp is set to true, the script will remove all users from the privileged groups
-    if ($config.PrivilegedGroupsCleanUp){
+    if ($config.PrivilegedGroupsCleanUp -and $scope -ne "Tier-1"){
         $DomainSID = (Get-ADDomain -server $Domain).DomainSID
         foreach ($relativeSid in $PrivlegeDomainSid) {
             validateAndRemoveUser -SID "$DomainSID-$RelativeSid" -DomainDNSName $Domain -PrivilegedOU $config.Tier0UsersPath -ServiceAccountPath $config.Tier0ServiceAccountPath
@@ -484,7 +505,8 @@ foreach ($Domain in $config.Domains){
         validateAndRemoveUser -SID "S-1-5-32-544" -DomainDNSName $Domain -PrivilegedOU $config.Tier0UsersPath -ServiceAccountPath $config.Tier0ServiceAccountPath
     }
 }
-if ($config.PrivilegedGroupsCleanUp){
+if ($config.PrivilegedGroupsCleanUp -and $scope -ne "Tier-1"){
+    #cleanup of the forest privileged groups
     $forestDNS = (Get-ADDomain).Forest
     $forestSID = (Get-ADDomain -Server $forestDNS).DomainSID.Value
     Write-Log "searching for unexpected users in schema admins" -Severity Debug -EventID 2008
