@@ -28,6 +28,8 @@ Version History:
     0.1.20250331 - Change the parameter from Path to OU on Add-TierLevelIsolationComputerPath, Add-TierLevelIsolationUserPath, Add-TierLevelIsolationServiceAccountPath to clarify that it is an Organizational Unit (OU) path.
                  - Added validation to check if the specified OU exists in Active Directory before adding it to the configuration.
                  - Added error handling for invalid inputs and exceptions when retrieving OUs or groups from Active Directory.
+    0.1.20250423 - Added function to set the DebugLog Path to the configuration file.
+                 - Added function to get the DebugLog Path from the configuration file.
 
 #>
 
@@ -127,6 +129,7 @@ function Get-TierLevelIsolationConfiguration {
     $config | Add-Member -MemberType NoteProperty -Name scope                   -Value $null
     $config | Add-Member -MemberType NoteProperty -Name ProtectedUsers          -Value @()
     $config | Add-Member -MemberType NoteProperty -Name PrivilegedGroupsCleanUp -Value $false
+    $config | Add-Member -MemberType NoteProperty -Name LogPath                 -Value ""
     # Check if the config file exists
     if (Test-Path $configFile) {
         $CurrentConfig = Get-Content -Path $configFile -Raw | ConvertFrom-Json
@@ -294,7 +297,6 @@ function Remove-TierLevelIsolationComputerPath {
 #.PARAMETER Path
 #   The distinguishedname to the user organizational unit to add. The can can be full qualified or just the OU part.
 #   If the path is not a valid OU, the function will return a warning.
-
 #.PARAMETER configFile
 #   The path to the configuration file. If not specified, the default location is used.
 #   The default location is: \\$DNSRoot\SYSVOL\$DNSRoot\scripts\TierLevelIsolation.config
@@ -583,6 +585,16 @@ function Set-TierLevelPrivilegedGroupsCleanUpState{
     Set-TierLevelIsolationConfiguration -configFile $configFile -config $config
     return
 }
+#.SYNOPSIS
+#   Set the computer group for the specified tier level 
+#.DESCRIPTION
+#   This function sets the computer group for the specified tier level in the configuration.
+#.PARAMETER TierLevel
+#   The tier level to set the computer group for. Valid values are "Tier0" and "Tier1".
+#.PARAMETER GroupName
+#   The name of the computer group to set.  This can be a full qualified name or just the group name.
+#.PARAMETER configFile
+#   The path to the configuration file. If not specified, the default location is used. 
 function Set-TierLevelIsolationComputerGroup{
     param (
         [Parameter(Mandatory = $true, Position = 0)]
@@ -616,6 +628,19 @@ function Set-TierLevelIsolationComputerGroup{
     Set-TierLevelIsolationConfiguration -configFile $configFile -config $config
     return
 }
+#.SYNOPSIS
+#   Add a service account path to the specified tier level  
+#.DESCRIPTION
+#   This function adds a service account path to the specified tier level in the configuration.
+#.PARAMETER TierLevel
+#   The tier level to add the service account path to. Valid values are "Tier0" and "Tier1".
+#.PARAMETER OU
+#   The distinguishedname to the service account organizational unit to add. The can can be full qualified or just the OU part.
+#   If the path is not a valid OU, the function will return a warning.
+#.PARAMETER configFile
+#   The path to the configuration file. If not specified, the default location is used.
+#   The default location is: \\$DNSRoot\SYSVOL\$DNSRoot\scripts\TierLevelIsolation.config   
+
 function Add-TierLevelIsolationServiceAccountPath {
     param (
         [Parameter(Mandatory = $true, Position = 0)]
@@ -667,6 +692,14 @@ function Add-TierLevelIsolationServiceAccountPath {
     Set-TierLevelIsolationConfiguration -configFile $configFile -config $config
     return
 }
+#.SYNOPSIS
+#   Remove a service account path from the specified tier level
+#.DESCRIPTION
+#   This function removes a service account path from the specified tier level in the configuration.
+#.PARAMETER TierLevel
+#   The tier level to remove the service account path from. Valid values are "Tier0" and "Tier1".
+#.PARAMETER OU
+#   The distinguishedname to the service account organizational unit to remove. The can can be full qualified or just the OU part.  
 function Remove-TierLevelIsolationServiceAccountPath {
     param (
         [Parameter(Mandatory = $true, Position = 0)]
@@ -704,4 +737,38 @@ function Remove-TierLevelIsolationServiceAccountPath {
     }
     Set-TierLevelIsolationConfiguration -configFile $configFile -config $config
     return
+}
+#.SYNOPSIS
+#   Set the path for the debug log file
+#.DESCRIPTION
+#   This function sets the path for the debug log file in the configuration.
+#.PARAMETER LogPath    
+#   The path to the debug log file. This can be a full path or just the file name.
+#.PARAMETER configFile
+#   The path to the configuration file. If not specified, the default location is used.
+#   The default location is: \\$DNSRoot\SYSVOL\$DNSRoot\scripts\TierLevelIsolation.config
+function Set-DebugLogPath {
+    param (
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string]$LogPath,
+        [Parameter(Mandatory = $false, Position = 1)]
+        [string]$configFile = $global:configFile
+    )
+    Get-TierLevelIsolationConfiguration $configFile | Add-Member -MemberType NoteProperty -Name LogPath -Value $LogPath -Force
+    Set-TierLevelIsolationConfiguration -configFile $configFile -config $config
+}
+#.SYNOPSIS
+#   Get the path for the debug log file
+#.DESCRIPTION
+#   This function gets the path for the debug log file from the configuration.
+#.PARAMETER configFile
+#   The path to the configuration file. If not specified, the default location is used.
+#   The default location is: \\$DNSRoot\SYSVOL\$DNSRoot\scripts\TierLevelIsolation.config
+function Get-DebugLogPath {
+    param (
+        [Parameter(Mandatory = $false, Position = 0)]
+        [string]$configFile = $global:configFile
+    )
+    $config = Get-TierLevelIsolationConfiguration $configFile 
+    return $config.LogPath
 }

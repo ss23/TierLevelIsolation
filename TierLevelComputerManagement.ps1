@@ -196,23 +196,10 @@ $ADconfigurationPath = "CN=Tier Level Isolation,CN=Services,$((Get-ADRootDSE).co
 #endregion
 
 #script Version 
-$ScriptVersion = "0.2.20250320"
-#region Manage log file
-[int]$MaxLogFileSize = 1048576 #Maximum size of the log file
-$LogFile = "$($env:LOCALAPPDATA)\$($MyInvocation.MyCommand).log" #Name and path of the log file
-#rename existing log files to *.sav if the currentlog file exceed the size of $MaxLogFileSize
-if (Test-Path $LogFile) {
-    if ((Get-Item $LogFile ).Length -gt $MaxLogFileSize) {
-        if (Test-Path "$LogFile.sav") {
-            Remove-Item "$LogFile.sav"
-        }
-        Rename-Item -Path $LogFile -NewName "$logFile.sav"
-    }
-}
-#endregion
+$ScriptVersion = "0.2.20250423"
+
 #using the next closest global catalog server
 $GlobalCatalog = (Get-ADDomainController -Discover -Service GlobalCatalog -NextClosestSite ).HostName
-Write-Log -Message "Tier Isolation computer management $Scope version $ScriptVersion started. $($MyInvocation.Line) see $logFile " -Severity Information -EventID 1000
 
 #region read configuration
 try{
@@ -251,6 +238,25 @@ if ($null -eq $scope ){
     $scope = $config.scope
 }
 #endregion
+#region Manage log file
+[int]$MaxLogFileSize = 1048576 #Maximum size of the log file
+if ($config.LogPath -eq ""){
+    $LogFile = "$($env:LOCALAPPDATA)\$($MyInvocation.MyCommand).log" #Name and path of the log file
+} else {
+    $LogFile = "$($config.LogPath)\$()$MyInvocation.MyCommand).log" #Name and path of the log file
+}
+
+#rename existing log files to *.sav if the currentlog file exceed the size of $MaxLogFileSize
+if (Test-Path $LogFile) {
+    if ((Get-Item $LogFile ).Length -gt $MaxLogFileSize) {
+        if (Test-Path "$LogFile.sav") {
+            Remove-Item "$LogFile.sav"
+        }
+        Rename-Item -Path $LogFile -NewName "$logFile.sav"
+    }
+}
+#endregion
+Write-Log -Message "Tier Isolation computer management $Scope version $ScriptVersion started. $($MyInvocation.Line) see $logFile " -Severity Information -EventID 1000
 #region validate the Tier computer groups exist. If not terminal the scirpt
 try {
     $Tier0ComputerGroup = Get-ADGroup -Filter "SamAccountName -eq '$($config.Tier0ComputerGroup)'" -Properties member
