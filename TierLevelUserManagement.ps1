@@ -57,6 +57,8 @@ possibility of such damages
         Bug fix: The parameter $configFile default value fixed
     Version 0.2.20250410
         Bug Fix in ValidateAndRemoveUser function. the function now recognize the relative DN of privielged users
+    Version 0.2.20250423
+        If a alternative logfile path in the configuration file is not set, the script will use the local appdata path of the user running the script.
 
 #>
 param(
@@ -257,7 +259,7 @@ function validateAndRemoveUser{
         [string[]] $ServiceAccountPath
 
     )
-    #if the privileged OU
+    #if the privileged OU is a relative path, adding "DC=" to the path. This avoid fake Tier 0 OUs path like "OU=Tier 0,OU=Admin,OU=something,DC=contoso,DC=com"
     $tempPrivOU= @()
     foreach ($OU in $PrivilegedOU){
         if ($OU -like "*,DC=*"){
@@ -389,20 +391,7 @@ $PrivlegeDomainSid = @(
 )
 #endregion
 
-#region Manage log file
-[int]$MaxLogFileSize = 1048576 #Maximum size of the log file
-$LogFile = "$($env:LOCALAPPDATA)\$($MyInvocation.MyCommand).log" #Name and path of the log file
-#rename existing log files to *.sav if the currentlog file exceed the size of $MaxLogFileSize
-if (Test-Path $LogFile) {
-    if ((Get-Item $LogFile ).Length -gt $MaxLogFileSize) {
-        if (Test-Path "$LogFile.sav") {
-            Remove-Item "$LogFile.sav"
-        }
-        Rename-Item -Path $LogFile -NewName "$logFile.sav"
-    }
-}
-#endregion
-Write-Log -Message "Tier Isolation user management $Scope version $ScriptVersion started. see $LogFile for more details" -Severity Information -EventID 2000
+
 #region read configuration
 try{
     if ($ConfigFile -eq '') {
@@ -426,6 +415,25 @@ catch {
     Write-Log -Message "error reading configuration" -Severity Error -EventID 2005
     return 0x3E8
 }
+#region Manage log file
+[int]$MaxLogFileSize = 1048576 #Maximum size of the log file
+if ($config.LogPath -eq ""){
+    $LogFile = "$($env:LOCALAPPDATA)\$($MyInvocation.MyCommand).log" #Name and path of the log file
+} else {
+    $LogFile = "$($config.LogPath)\$()$MyInvocation.MyCommand).log" #Name and path of the log file
+}
+
+#rename existing log files to *.sav if the currentlog file exceed the size of $MaxLogFileSize
+if (Test-Path $LogFile) {
+    if ((Get-Item $LogFile ).Length -gt $MaxLogFileSize) {
+        if (Test-Path "$LogFile.sav") {
+            Remove-Item "$LogFile.sav"
+        }
+        Rename-Item -Path $LogFile -NewName "$logFile.sav"
+    }
+}
+#endregion
+Write-Log -Message "Tier Isolation user management $Scope version $ScriptVersion started. see $LogFile for more details" -Severity Information -EventID 2000
 #if the paramter $scope is set, it will overwrite the saved configuration
 
 if ($null -eq $scope ){
