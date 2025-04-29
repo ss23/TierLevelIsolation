@@ -45,6 +45,8 @@ possibility of such damages
         Documentation update
     Version 0.2.20250320
         Default configuration file change from tiering.json to TierLevelIsolation.config
+    Version 0.2.20250329
+        The script consumes the log path parameter from the configfile
 #>
 
 param(
@@ -90,20 +92,7 @@ function Write-Log {
         [Parameter (Mandatory = $true)]
         [int]$EventID
     )
-    #validate the event source TierLevelIsolation is registered in the application log. If the registration failes
-    #the events will be written with the standard application event source to the event log. 
-    try {   
-        $eventLog = "Application"
-        $source = "TierLevelIsolation"
-        # Check if the source exists; if not, create it
-        if (-not [System.Diagnostics.EventLog]::SourceExists($source)) {
-            [System.Diagnostics.EventLog]::CreateEventSource($source, $eventLog)
-        }
-    }
-    catch {
-        Add-Content -Path $LogFile -Value "$(Get-Date -Format o), Error, Can't register Event source"
-        $source = "Application"
-    }
+
 
     #Format the log message and write it to the log file
     $LogLine = "$(Get-Date -Format o), [$Severity],[$EventID], $Message"
@@ -196,41 +185,55 @@ $ADconfigurationPath = "CN=Tier Level Isolation,CN=Services,$((Get-ADRootDSE).co
 #endregion
 
 #script Version 
-$ScriptVersion = "0.2.20250423"
-
+$ScriptVersion = "0.2.20250429"
+#validate the event source TierLevelIsolation is registered in the application log. If the registration failes
+#the events will be written with the standard application event source to the event log. 
+try {   
+    $eventLog = "Application"
+    $source = "TierLevelIsolation"
+    # Check if the source exists; if not, create it
+    if (-not [System.Diagnostics.EventLog]::SourceExists($source)) {
+        [System.Diagnostics.EventLog]::CreateEventSource($source, $eventLog)
+    }
+}
+catch {
+    Write-EventLog -logname $eventLog -source "Application" -EventId 0 -EntryType Error -Message "The event source $source could not be created. The script will use the default event source Application"
+    $source = "Application"
+}
 #using the next closest global catalog server
 $GlobalCatalog = (Get-ADDomainController -Discover -Service GlobalCatalog -NextClosestSite ).HostName
 
 #region read configuration
 try{
     #if the configuration file is not set, the script will search for the configuration in the Active Directory configuration partition or on the default path
-    #if the configuraiton is availab in the Active Directory configuration partition, the script will read the configuration from the AD
+    #if the configuration is avaiable in the Active Directory configuration partition, the script will read the configuration from the AD
     #otherwise try to use the default configuration file
     if ($ConfigFile -eq '') {
         if ($null -ne (Get-ADObject -Filter "DistinguishedName -eq '$ADconfigurationPath'")){
-            Write-Log -Message "Read config from AD configuration partition" -Severity Debug -EventID 1002
+            #Write-Log -Message "Read config from AD configuration partition" -Severity Debug -EventID 1002
             Write-host "AD config lesen noch implementieren" -ForegroundColor Red -BackgroundColor DarkGray
             return
         } else {
             #last resort if the configfile paramter is not available and no configuration is stored in the AD. check for the dafault configuration file
             if ($null -eq $config){
                 if ((Test-Path -Path $DefaultConfigFile)){
-                    Write-Log -Message "Read config from $DefaultConfigFile" -Severity Debug -EventID 1100
-                    $config = Get-Content $DefaultConfigFile | ConvertFrom-Json            
+                    $config = Get-Content $DefaultConfigFile | ConvertFrom-Json  
+                    #Write-Log -Message "Read config from $ConfigFile" -Severity Debug -EventID 1101          
                 } else {
-                    Write-Log -Message "Can't find the configuration in $DefaultConfigFile or Active Directory" -Severity Error -EventID 1003
+                    Write-EventLog -LogName "Application" -source $source -Message "TierLevle Isolation Can't find the configuration in $DefaultConfigFile or Active Directory" -Severity Error -EventID 0
                     return 0xe7
                 }
             }
         }
     }
-    else {
-        Write-Log -Message "Read config from $ConfigFile" -Severity Debug -EventID 1101
+    else {    
         $config = Get-Content $ConfigFile | ConvertFrom-Json 
+        Write-Log -Message "Read config from $ConfigFile" -Severity Debug -EventID 1101
     }
+
 }
 catch {
-    Write-Log -Message "error reading configuration" -Severity Error -EventID 1003
+    Write-EventLog -LogName "Application" -Source "Application" -Message "error reading configuration" -Severity Error -EventID 0
     return 0x3E8
 }
 #if the paramter $scope is set, it will overwrite the saved configuration
@@ -240,10 +243,10 @@ if ($null -eq $scope ){
 #endregion
 #region Manage log file
 [int]$MaxLogFileSize = 1048576 #Maximum size of the log file
-if ($config.LogPath -eq ""){
+if ($null -eq $config.LogPath -or $config.LogPath -eq ""){
     $LogFile = "$($env:LOCALAPPDATA)\$($MyInvocation.MyCommand).log" #Name and path of the log file
 } else {
-    $LogFile = "$($config.LogPath)\$()$MyInvocation.MyCommand).log" #Name and path of the log file
+    $LogFile = "$($config.LogPath)\$($MyInvocation.MyCommand).log" #Name and path of the log file
 }
 
 #rename existing log files to *.sav if the currentlog file exceed the size of $MaxLogFileSize
