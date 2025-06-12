@@ -1,0 +1,8 @@
+{
+    "OUTier0Users":  "OU=Admins,OU=Tier 0,OU=Admin",
+    "OUTier0Computers":  "OU=Computers,OU=Tier 0,OU=Admin",
+    "OUTier0ServiceAccounts":  "OU=Service Accounts,OU=Tier 0,OU=Admin",
+    "Tier0ComputerGroup":  "Tier 0 Computers",
+    "KerberosAuthenticationPolicyName":  "Tier 0 Restrictions",
+    "Version": -1
+}
