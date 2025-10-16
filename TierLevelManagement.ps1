@@ -38,7 +38,7 @@ $oProtectedUsersGroup = Get-ADGroup -Identity "$((Get-ADDomain -Server $DomainDN
 
 # Verify the OU exists
 try {
-    $users = Get-ADUser -SearchBase "$($Config.OUTier0Users),$($DomainDN)" -Filter * -Properties msDS-AssignedAuthNPolicy,memberOf,UserAccountControl -SearchScope Subtree -Server $DomainDNS
+    $users = Get-ADUser -SearchBase "$($Config.OUTier0Users),$($DomainDN)" -Filter * -Properties msDS-AssignedAuthNPolicy,memberOf -SearchScope Subtree -Server $DomainDNS
 } catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException] {
     Write-Log "Cannot enumerate user OU. Are you sure you ran the install script?" -Severity Error
     throw
@@ -67,12 +67,45 @@ foreach ($user in $users) {
     }
 }
 
-# Find users who are not in the tier 0 groups and remove their managed Kerberos Authentication Policy
+# We apply an *almost* identical restriction to Service Accounts, but we do not add them to the Protected Users group (as this breaks service accounts).
+try {
+    $serviceAccounts = Get-ADUser -SearchBase "$($Config.OUTier0ServiceAccounts),$($DomainDN)" -Filter * -Properties msDS-AssignedAuthNPolicy,AccountNotDelegated -SearchScope Subtree -Server $DomainDNS
+} catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException] {
+    Write-Log "Cannot enumerate service account OU. Are you sure you ran the install script?" -Severity Error
+    throw
+}
+
+# For every service account within tier 0, ensure they are configured properly
+foreach ($serviceAccount in $serviceAccounts) {
+    if ($serviceAccount.SID -like "*-500"){
+        Write-Log "Built in Administrator (-500) is located in managed service account OU. Skipping..." -Severity Warning
+        continue
+    }
+
+    # Assign the policy if not already assigned
+    if ($serviceAccount.'msDS-AssignedAuthNPolicy' -ne $KerberosAuthenticationPolicy.DistinguishedName) {
+        Write-Log "Adding Kerberos Authentication Policy on $serviceAccount" -Severity Information
+        Set-ADUser $serviceAccount -AuthenticationPolicy $Config.KerberosAuthenticationPolicyName -Server $DomainDNS
+    }
+
+    # Set the Account is sensitive and cannot be delegated flag - https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/how-to-configure-protected-accounts#BKMK_ProvidePUdcProtections
+    if ($serviceAccount.AccountNotDelegated -eq $False) {
+        Set-ADUser $serviceAccount -AccountNotDelegated $True
+        Write-Log "Service account $($serviceAccount.DistinguishedName) is configured as Account Not Delegated" -Severity Information
+    }
+}
+
+# Find accounts who are not in the tier 0 groups and remove their managed Kerberos Authentication Policy
 # Note we don't remove the Protected Users group membership, as we can't determine whether it is expected the user will remain in there or not
+# The same logic prevents us removing the Account is sensitive and cannot be delegated flag
 $users = Get-ADUser -Filter "msDS-AssignedAuthNPolicy -eq '$($KerberosAuthenticationPolicy.DistinguishedName)'" -Properties DistinguishedName -Server $DomainDNS
 foreach ($user in $users) {
     if ($user.DistinguishedName -match "$($Config.OUTier0Users),$($DomainDN)$") {
         # The user is in the tiered OU, so we can skip them
+        continue
+    }
+    if ($user.DistinguishedName -match "$($Config.OUTier0ServiceAccounts),$($DomainDN)$") {
+        # The service account is in the tiered OU, so we can skip them
         continue
     }
     Set-ADUser $user -Clear msDS-AssignedAuthNPolicy
