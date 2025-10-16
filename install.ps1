@@ -90,7 +90,7 @@ try {
         -Enforce `
         -UserAllowedToAuthenticateFrom $AllowToAutenticateFromSDDL `
         -ProtectedFromAccidentalDeletion $true `
-        -Description "This policy aims to isolate Tier 0 systems to ensure the security and integrity of critical IT infrastructures. Users assigned this policy can only log in to computers that are members of the 'Enterprise Domain Controller' group or the 'Tier 0 Server'group. This ensures that only authorized users have access to the most sensitive systems within the organization."
+        -Description "This policy aims to isolate Tier 0 systems to ensure the security and integrity of critical IT infrastructures. Users assigned this policy can only log in to computers that are members of the 'Enterprise Domain Controller' group or the 'Tier 0 Server' group. This ensures that only authorized users have access to the most sensitive systems within the organization."
 }
 
 # Write our configuration file now that installation is complete
